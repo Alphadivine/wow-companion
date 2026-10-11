@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10 — Talent icons and tighter hero trees
+
+- Talent nodes now show their real spell icons from Blizzard instead of letters; choice nodes show both icons side by side, and the talent details panel shows the icon too
+- New Worker route `/api/icons` looks up icons 30 at a time and saves each one for 30 days, so after the first visit a spec's icons load instantly; the browser also keeps them for 30 days
+- Talents without an icon from Blizzard keep their letters
+- Hero trees that Blizzard spaces widely are squeezed so empty gaps are at most one cell, matching the compact in-game look (redeploy the Worker to get icons)
+
 ## 2026-10 — Spec-dependent talent slots
 
 - Some tree slots hold a different talent depending on spec (for example Mass Eruption vs Mass Disintegrate in Scalecommander), and Blizzard sends every version at the same spot, so talents were drawn on top of each other

@@ -235,7 +235,7 @@
     const show = i => {
       tabs.forEach((b, j) => { b.setAttribute("aria-selected", String(j === i)); b.tabIndex = j === i ? 0 : -1; });
       document.getElementById("treePanel").setAttribute("aria-labelledby", "tab" + i);
-      view = T.render(host, trees[i], { color: col, onSelect: (n, picked) => {
+      view = T.render(host, trees[i], { color: col, icons: API.icons, onSelect: (n, picked) => {
         tipBody.innerHTML = T.details(n);
         if (picked && narrow.matches) tipPanel.classList.add("sheet-open");
       } });

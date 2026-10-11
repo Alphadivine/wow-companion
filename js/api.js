@@ -38,8 +38,34 @@ window.WOW_API = (() => {
     return body;
   }
 
+  // Spell icons are kept in the browser for 30 days and fetched 30 at a time.
+  const ICON_KEY = "wowc:icons";
+  const ICON_DAYS = 30;
+  let iconMap = null;
+  function iconStore() {
+    if (iconMap) return iconMap;
+    try {
+      const v = JSON.parse(localStorage.getItem(ICON_KEY) || "null");
+      iconMap = v && Date.now() - v.t < ICON_DAYS * 864e5 ? v.d : {};
+    } catch { iconMap = {}; }
+    return iconMap;
+  }
+  async function icons(ids) {
+    const map = iconStore();
+    const want = [...new Set(ids.filter(Boolean).map(String))].filter(id => !(id in map));
+    for (let i = 0; base && i < want.length; i += 30) {
+      try {
+        const res = await fetch(`${base}/api/icons?ids=${want.slice(i, i + 30).join(",")}`);
+        if (res.ok) Object.assign(map, (await res.json()).icons || {});
+      } catch { /* icons are optional; letters stay */ }
+    }
+    try { localStorage.setItem(ICON_KEY, JSON.stringify({ t: Date.now(), d: map })); } catch { /* storage full */ }
+    return map;
+  }
+
   return {
     configured: !!base,
+    icons,
     classes: () => get("/api/classes"),
     cls: id => get(`/api/class/${id}`),
     spec: id => get(`/api/spec/${id}`)

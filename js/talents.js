@@ -2,6 +2,7 @@
 window.WOW_TALENTS = (() => {
   const TYPE_LABEL = { ACTIVE: "Active ability", PASSIVE: "Passive", CHOICE: "Choice node" };
   const ROW_H = 74;
+  const iconMap = {}; // spell id -> icon URL, filled as icons load
 
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const initials = name => String(name || "?").replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(w => w && !/^(of|the|and)$/i.test(w)).slice(0, 2).map(w => w[0].toUpperCase()).join("") || "?";
@@ -13,8 +14,18 @@ window.WOW_TALENTS = (() => {
     const px = nodes.map(n => (raw ? n.x / 600 : n.col ?? 0));
     const py = nodes.map(n => (raw ? n.y / 600 : n.row ?? 0));
     const minX = Math.min(...px), minY = Math.min(...py);
-    const snap = v => Math.round(v * 2) / 2;
-    const pos = nodes.map((n, i) => ({ c: snap(px[i] - minX), r: snap(py[i] - minY) }));
+    // Work in half-cells, and shrink any empty gap wider than one cell down to one cell,
+    // so trees Blizzard spaces out widely still look compact.
+    const halves = vals => {
+      const h = vals.map(v => Math.round(v * 2));
+      const distinct = [...new Set(h)].sort((a, b) => a - b);
+      const map = new Map();
+      let at = 0;
+      distinct.forEach((v, i) => { if (i) at += Math.min(v - distinct[i - 1], 2); map.set(v, at); });
+      return h.map(v => map.get(v) / 2);
+    };
+    const cx = halves(px.map(v => v - minX)), cy = halves(py.map(v => v - minY));
+    const pos = nodes.map((n, i) => ({ c: cx[i], r: cy[i] }));
     return {
       cols: Math.ceil(Math.max(...pos.map(p => p.c))) + 1,
       rows: Math.ceil(Math.max(...pos.map(p => p.r))) + 1,
@@ -46,7 +57,7 @@ window.WOW_TALENTS = (() => {
       const label = `${names}. ${TYPE_LABEL[n.type] || "Talent"}${n.maxRank > 1 ? `, ${n.maxRank} ranks` : ""}${n.free ? ", granted free" : ""}`;
       return `<button type="button" class="tnode ${nodeShape(n.type)}${n.free ? " free" : ""}${n.variants ? " var" : ""}" data-i="${i}"
         style="left:${((pos[i].c + 0.5) / cols) * 100}%;top:${pos[i].r * ROW_H + ROW_H / 2}px" aria-label="${esc(label)}">
-        <span class="tn-face">${esc(n.type === "CHOICE" && n.choices[1] ? initials(first.name)[0] + initials(n.choices[1].name)[0] : initials(first.name))}</span>
+        <span class="tn-face"><span class="tn-letters">${esc(n.type === "CHOICE" && n.choices[1] ? initials(first.name)[0] + initials(n.choices[1].name)[0] : initials(first.name))}</span></span>
         ${n.maxRank > 1 ? `<span class="tn-rank">${n.maxRank}</span>` : ""}
       </button>`;
     }).join("");
@@ -74,6 +85,23 @@ window.WOW_TALENTS = (() => {
       b.addEventListener("mouseleave", () => { if (selected != null) opts.onSelect && opts.onSelect(nodes[selected]); });
     });
 
+    // Swap the letters for real spell icons once they arrive (choice nodes show both halves).
+    if (opts.icons) {
+      const faceSpells = n => (n.variants ? n.variants[0] : n.choices).slice(0, 2).map(c => c.spellId).filter(Boolean);
+      const all = nodes.flatMap(n => (n.variants ? n.variants.flat() : n.choices).map(c => c.spellId)).filter(Boolean);
+      opts.icons(all).then(map => {
+        Object.assign(iconMap, map);
+        btns.forEach(b => {
+          const n = nodes[+b.dataset.i];
+          const urls = faceSpells(n).map(id => map[id]).filter(Boolean);
+          if (!urls.length || !b.isConnected) return;
+          const face = b.querySelector(".tn-face");
+          face.insertAdjacentHTML("beforeend", `<span class="tn-icons">${urls.map(u => `<img src="${esc(u)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</span>`);
+        });
+        if (selected != null && opts.onSelect) opts.onSelect(nodes[selected]);
+      }).catch(() => {});
+    }
+
     return {
       filter(q) {
         const s = q.trim().toLowerCase();
@@ -98,7 +126,7 @@ window.WOW_TALENTS = (() => {
     const opt = (c, i) => `
       <div class="tip-opt">
         ${n.choices.length > 1 ? `<span class="tip-or">${i === 0 ? "Option 1" : "Option 2"}</span>` : ""}
-        <h4>${esc(c.name)}</h4>
+        <h4>${iconMap[c.spellId] ? `<img class="tip-ic" src="${esc(iconMap[c.spellId])}" alt="" onerror="this.remove()">` : ""}${esc(c.name)}</h4>
         <div class="tip-stats">${[c.cast, c.range, c.cooldown, c.cost].filter(Boolean).map(v => `<span>${esc(v)}</span>`).join("")}</div>
         <p>${esc(c.desc) || "<span class='muted'>No description from Blizzard.</span>"}</p>
       </div>`;
