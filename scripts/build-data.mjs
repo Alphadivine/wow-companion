@@ -554,7 +554,7 @@ const WOWHEAD_TOOLTIP = env.WOWHEAD_TOOLTIP || "https://nether.wowhead.com/toolt
 const spellCache = new Map();
 function tooltipText(html, title) {
   let t = String(html || "")
-    .replace(/<br\s*\/?>/gi, "\n").replace(/<\/(tr|table|div|p)>/gi, "\n").replace(/<\/t[dh]>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n").replace(/<\/(tr|table|div|p)>/gi, "\n").replace(/<div[^>]*>/gi, "\n").replace(/<\/t[dh]>/gi, " ")
     .replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
     .split("\n").map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
   if (t[0] && title && t[0].toLowerCase().startsWith(title.toLowerCase())) t[0] = t[0].slice(title.length).trim();
@@ -665,7 +665,7 @@ async function writeGuide(tiers) {
 // The Classic section's tree layouts ship with the site (notes/trees-era.json and trees-tbc.json, from the
 // wowsims projects). Talent names, icons and descriptions come from Wowhead's Classic and TBC tooltips.
 // They never change, so they're only rebuilt when CLASSIC_VERSION changes.
-const CLASSIC_VERSION = 1;
+const CLASSIC_VERSION = 2; // 2: descriptions after a "Requires …" line were being dropped
 const CLASSIC_TOOLTIP = {
   era: env.CLASSIC_TOOLTIP_ERA || "https://nether.wowhead.com/classic/tooltip/spell/{id}?dataEnv=4&locale=0",
   tbc: env.CLASSIC_TOOLTIP_TBC || "https://nether.wowhead.com/tbc/tooltip/spell/{id}?dataEnv=5&locale=0"

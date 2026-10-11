@@ -9,6 +9,7 @@
 - Pre-raid best in slot (TBC: pre-raid and catch-up gear) with Wowhead item links and where each item comes from
 - The data job fetches Classic and TBC talent names, icons and descriptions from Wowhead once
 - The version button now says "Classic"
+- Fixed 38 Classic and TBC talents with no description (text after a "Requires …" line was dropped); the next upload re-fetches talent details
 
 ## 2026-10 — Phase 4 fixes from the first real Adventure Guide data
 
