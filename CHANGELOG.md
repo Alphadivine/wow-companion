@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10 — Fix specs loading without talent trees
+
+- When Blizzard briefly rate-limited requests, the Worker treated it as "no talent tree" and cached that empty answer for 24 hours, so many specs showed no trees and some showed no icon
+- The Worker now retries rate-limited and failed Blizzard calls, and never caches a half-loaded answer
+- Cache versions bumped so every spec rebuilds with its full trees (redeploy the Worker to get this)
+
 ## 2026-10 — Updates show up right away
 
 - Browsers now keep Worker answers for 5 minutes instead of an hour, and the site asks for a versioned address, so fixes appear right after a deploy instead of up to an hour later (redeploy the Worker to get this)
