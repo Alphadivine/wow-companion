@@ -2,7 +2,7 @@
 
 ## 2026-10 — Phase 4 fixes from the first real Adventure Guide data
 
-- Ability entries now show their description: Blizzard's guide only links each ability to its spell, so the data job fills in the spell's text
+- Ability entries now show their description, cast time and icon. Blizzard's guide only links each ability to its spell, and Blizzard's web API has no text or icons for boss spells, so the data job reads them from Wowhead's public tooltip service (credited on the page)
 - Removed ability groups Blizzard lists twice
 - Raid bosses follow the Adventure Guide's order (Lost Explorers before Vashnik)
 - Ability names in Blizzard's text show in bold instead of [brackets]

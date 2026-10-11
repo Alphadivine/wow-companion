@@ -464,3 +464,4 @@ main:focus { outline: none; }
   .hero-tile { display: none; }
 }
 .pre strong.sp { color: var(--gold-hi); font-weight: 700; }
+.ab-meta { margin-left: auto; font-weight: 600; font-size: 12.5px; color: var(--muted); }

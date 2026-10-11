@@ -822,7 +822,7 @@
     const noteCols = note ? [...roleCols, ["everyone", "Everyone"]].filter(([k]) => (note[k] || []).length).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4>${bullets(note[k])}</div>`).join("") : "";
     const blizzRoles = journal?.roles ? roleCols.filter(([k]) => journal.roles[k]).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4><p class="pre">${rich(journal.roles[k])}</p></div>`).join("") : "";
     const sec = (list, d = 0) => (list || []).map(x => `
-      <details class="ab"${d === 0 ? " open" : ""}><summary>${x.spell ? `<span class="ab-ic" data-spell="${x.spell}"></span>` : ""}<span>${esc(x.title)}</span></summary>
+      <details class="ab"${d === 0 ? " open" : ""}><summary>${x.icon ? `<span class="ab-ic"><img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.remove()"></span>` : x.spell ? `<span class="ab-ic" data-spell="${x.spell}"></span>` : ""}<span>${esc(x.title)}</span>${x.meta ? `<small class="ab-meta">${esc(x.meta)}</small>` : ""}</summary>
         ${x.text ? `<p class="pre">${rich(x.text)}</p>` : ""}${x.sections ? `<div class="ab-kids">${sec(x.sections, d + 1)}</div>` : ""}
       </details>`).join("");
     return `
@@ -834,6 +834,7 @@
       ${journal ? `<details class="journal"${opts.openJournal ? " open" : ""}><summary>Full ability breakdown <span class="muted small">from Blizzard's Adventure Guide</span></summary>
         ${blizzRoles ? `<h4 class="j-h">Blizzard's role notes</h4><div class="role-grid">${blizzRoles}</div>` : ""}
         <div class="abilities">${sec(journal.sections)}</div>
+        ${JSON.stringify(journal.sections).includes('"textSource":"wowhead"') ? `<p class="muted small">Ability text and icons from <a href="https://www.wowhead.com" target="_blank" rel="noopener">Wowhead</a>; structure and role notes from Blizzard's Adventure Guide.</p>` : ""}
       </details>` : `<p class="muted small">Blizzard's Adventure Guide for this boss hasn't been loaded yet; it arrives with the next daily data refresh.</p>`}`;
   }
   async function fillSpellIcons(root) {

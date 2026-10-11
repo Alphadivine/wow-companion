@@ -31,7 +31,7 @@ The site never calls Blizzard directly. A small Cloudflare Worker (`wow-companio
 
 Battle.net sign-in goes through the Worker too (`/auth/login` and `/auth/callback`). The Worker uses the sign-in once to read your character list and sends it back in the page address after the `#` (which browsers never send to a server). It doesn't keep your Battle.net token, and sign-in doesn't use the Worker's KV storage. The list is saved in your browser; character gear and talents are public Blizzard data the Worker reads with its own key and caches for 10 minutes.
 
-Dungeon and raid ability details come from Blizzard's Adventure Guide, pulled by the same daily job into `data/guide/`. The hand-written leveling, dungeon and raid notes live in `notes/` (researched from Icy Veins, Method, Wowhead and Raider.IO, with sources listed on each page) and need a refresh each season.
+Dungeon and raid ability details come from Blizzard's Adventure Guide, pulled by the same daily job into `data/guide/`. Blizzard's web API has no text or icons for boss spells, so each ability's description, cast time and icon come from Wowhead's public tooltip service. The hand-written leveling, dungeon and raid notes live in `notes/` (researched from Icy Veins, Method, Wowhead and Raider.IO, with sources listed on each page) and need a refresh each season.
 
 Builds and tier lists come from a GitHub Actions job (`.github/workflows/pages.yml` runs `scripts/build-data.mjs`) every morning. It reads Raider.IO, Warcraft Logs and Blizzard, writes `data/builds/{spec}.json`, `data/tiers.json` and `data/meta.json`, and publishes them with the site. Uploads publish right away and keep the current data.
 

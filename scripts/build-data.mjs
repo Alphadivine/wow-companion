@@ -526,7 +526,7 @@ function raidTiers(specs, results) {
 // Blizzard's in-game Adventure Guide (the "journal") for the current raid and this season's Mythic+
 // dungeons: every boss ability, plus Blizzard's own Tanks / Healers / Damage Dealers overview bullets.
 
-const GUIDE_VERSION = 2; // bump when the guide format changes, so the next upload rebuilds it
+const GUIDE_VERSION = 3; // bump when the guide format changes, so the next upload rebuilds it
 const normName = s => String(s || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]/g, "");
 
 // Strips the Adventure Guide's formatting codes and turns its bullet markers into plain bullets.
@@ -547,21 +547,44 @@ function journalSections(list, depth = 0) {
   }).filter(x => { const k = JSON.stringify(x); if (seen.has(k)) return false; seen.add(k); return true; }); // Blizzard repeats some groups
 }
 
-// Abilities in the Adventure Guide are links to spells; the in-game guide shows the spell's own text,
-// so fill in each empty ability from Blizzard's spell data.
+// Abilities in the Adventure Guide are links to spells, and the in-game guide shows the spell's own text.
+// Blizzard's web API has no text or icons for most boss spells, so both come from Wowhead's public
+// tooltip service (the one fan sites use for ability popups). The site credits Wowhead next to them.
+const WOWHEAD_TOOLTIP = env.WOWHEAD_TOOLTIP || "https://nether.wowhead.com/tooltip/spell/{id}?dataEnv=1&locale=0";
+const spellCache = new Map();
+function tooltipText(html, title) {
+  let t = String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n").replace(/<\/(tr|table|div|p)>/gi, "\n").replace(/<\/t[dh]>/gi, " ")
+    .replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .split("\n").map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (t[0] && title && t[0].toLowerCase().startsWith(title.toLowerCase())) t[0] = t[0].slice(title.length).trim();
+  t = t.filter(Boolean);
+  // Lines like "1 sec cast", "40 yd range", "Instant", "2 min cooldown" become a short meta line.
+  const meta = [], body = [];
+  for (const l of t) (/^(instant|channeled|\d[\d.]* (sec|min) (cast|cooldown|recharge)|\d+ yd range|melee range|unlimited range|passive|\d+[\d,]* (mana|energy|rage))\b/i.test(l) && l.length < 40 ? meta : body).push(l);
+  return { meta: meta.join(" · "), text: body.join("\n") };
+}
+async function wowheadSpell(id) {
+  if (spellCache.has(id)) return spellCache.get(id);
+  const p = getJson(WOWHEAD_TOOLTIP.replace("{id}", id), { headers: { "User-Agent": "WoW Companion personal guide (GitHub Actions)" } }, 2)
+    .then(j => ({ icon: j.icon ? `https://wow.zamimg.com/images/wow/icons/large/${j.icon}.jpg` : "", ...tooltipText(j.tooltip, j.name) }))
+    .catch(() => null);
+  spellCache.set(id, p);
+  return p;
+}
 async function fillSpellText(sections) {
-  const empty = [];
-  const walk = list => { for (const x of list || []) { if (x.spell && !x.text) empty.push(x); walk(x.sections); } };
+  const spells = [];
+  const walk = list => { for (const x of list || []) { if (x.spell) spells.push(x); walk(x.sections); } };
   walk(sections);
-  const ids = [...new Set(empty.map(x => x.spell))];
-  const texts = new Map();
-  await pool(ids, 8, async id => {
-    const sp = await bnet("us", `/data/wow/spell/${id}?namespace=static-us&locale=en_US`).catch(() => null);
-    const t = journalText(name(sp?.description));
-    if (t) texts.set(id, t);
+  let filled = 0;
+  await pool(spells, 6, async x => {
+    const w = await wowheadSpell(x.spell);
+    if (!w) return;
+    if (w.icon) x.icon = w.icon;
+    if (!x.text && w.text) { x.text = w.text; x.textSource = "wowhead"; filled++; }
+    if (w.meta) x.meta = w.meta;
   });
-  for (const x of empty) if (texts.has(x.spell)) x.text = texts.get(x.spell);
-  return { asked: ids.length, filled: texts.size };
+  return { asked: spells.length, filled };
 }
 
 // Pulls the Tanks / Healers / Damage Dealers bullets out of an encounter's Overview section.
@@ -603,7 +626,7 @@ async function journalInstance(id) {
     version: GUIDE_VERSION, id: inst.id, name: name(inst.name), type: inst.category?.type || "", description: journalText(name(inst.description)),
     image: (media?.assets || []).find(a => a.key === "tile")?.value || (media?.assets || [])[0]?.value || "",
     modes: (inst.modes || []).map(m => name(m.mode?.name)).filter(Boolean),
-    encounters: encounters.filter(e => e && !e.__error)
+    encounters: encounters.filter(e => { if (e?.__error) log(`  guide: ${name(inst.name)} encounter failed: ${e.__error}`); return e && !e.__error; })
   };
 }
 
