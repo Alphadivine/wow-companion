@@ -424,13 +424,15 @@
   async function pageCharacters(sub, arg) {
     document.title = "My Characters · WoW Companion";
     if (sub === "signin" && arg) {
-      main.innerHTML = `<div class="wrap stack">${loading("Finishing sign-in…")}</div>`;
+      // The Worker sends the character list back in the address after the #, which never leaves the browser.
       try {
-        const v = await API.pickUpLogin(arg);
-        store.set("characters", { list: v.characters || [], at: v.at || new Date().toISOString() });
-        location.replace("#/characters");
-      } catch (err) {
-        main.innerHTML = `<div class="wrap stack"><section class="panel locked-big"><h2>Sign-in didn't finish</h2><p>${esc(err.message)}</p>${signInButton("Sign in again")}</section></div>`;
+        const b64 = arg.replace(/-/g, "+").replace(/_/g, "/");
+        const v = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), ch => ch.charCodeAt(0))));
+        const list = (v.list || []).map(c => ({ name: c.n, realm: c.r, realmSlug: c.s, level: c.l, classId: c.c, className: c.k, race: c.a, faction: c.f }));
+        store.set("characters", { list, at: v.at || new Date().toISOString() });
+        location.replace("#/characters"); // also takes the list back out of the address bar and history
+      } catch {
+        main.innerHTML = `<div class="wrap stack"><section class="panel locked-big"><h2>Sign-in didn't finish</h2><p>The character list from Battle.net couldn't be read. Press Sign in again.</p>${signInButton("Sign in again")}</section></div>`;
       }
       return;
     }

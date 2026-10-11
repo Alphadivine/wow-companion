@@ -5,6 +5,8 @@
 - **Battle.net sign-in** on My Characters: sign in once, and your character list is saved on this device. Update list picks up new characters; Forget list removes it
 - Max-level characters show as cards with portrait, spec, item level, Mythic+ score and current raid progress; alts still leveling are behind a "Show all" toggle
 - **Character page** compares a character with the top Mythic+ or Raid build (same switch as the spec pages): an upgrade checklist, talent changes listed and marked on the tree (add, remove, switch, more ranks), gear next to the top players' pick for each slot with missing enchants and empty sockets flagged, and secondary stats side by side
+- Sign-in doesn't use KV storage (the free plan allows 1,000 writes a day, and the talent icon cache can use them up, which made sign-in fail with Cloudflare error 1101). The sign-in is protected with a signed state and a short-lived cookie instead
+- Saving the Worker's Blizzard access key no longer fails requests when KV's daily writes are used up (the cause of the occasional "Couldn't reach Blizzard's API")
 - Worker: new sign-in routes and a character route (gear with item icons, talents, stats, Mythic+ score, raid progress, portrait), cached 10 minutes
 - The site quietly retries once when Blizzard fails a request, instead of showing "Couldn't reach Blizzard's API"
 - Fixed talent nodes not in a build sitting above the phone's talent details sheet, and letter placeholders on spec cards sitting in the corner when an icon is missing

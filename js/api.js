@@ -97,7 +97,6 @@ window.WOW_API = (() => {
     spec: id => get(`/api/spec/${id}`),
     // A character's gear and talents change often, so the browser keeps them for 10 minutes.
     character: (realmSlug, name, fresh) => get(`/api/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(String(name).toLowerCase())}`, { maxMs: fresh ? 0 : 10 * 60000 }),
-    pickUpLogin: id => get(`/api/login/${id}`, { noStore: true }),
     signInUrl: () => `${base}/auth/login?return=${encodeURIComponent(location.origin + location.pathname)}`
   };
 })();

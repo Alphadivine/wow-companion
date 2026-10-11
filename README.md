@@ -28,7 +28,7 @@ A personal World of Warcraft guide that puts talent trees, builds, tier lists, g
 
 The site never calls Blizzard directly. A small Cloudflare Worker (`wow-companion-api`) holds the Blizzard Client ID and Secret, calls the API, trims the answers to what the site needs, and caches them for 24 hours. The site also keeps a 6-hour copy in your browser. The Worker address is set in `config.js`; keep it filled in when re-uploading the site. Setup steps are in `Docs/Setup guide.md` in the project bundle.
 
-Battle.net sign-in goes through the Worker too (`/auth/login` and `/auth/callback`). The Worker uses the sign-in once to read your character list, hands it to the site with a one-time pickup code, and doesn't keep your Battle.net token. The list is saved in your browser; character gear and talents are public Blizzard data the Worker reads with its own key and caches for 10 minutes.
+Battle.net sign-in goes through the Worker too (`/auth/login` and `/auth/callback`). The Worker uses the sign-in once to read your character list and sends it back in the page address after the `#` (which browsers never send to a server). It doesn't keep your Battle.net token, and sign-in doesn't use the Worker's KV storage. The list is saved in your browser; character gear and talents are public Blizzard data the Worker reads with its own key and caches for 10 minutes.
 
 Builds and tier lists come from a GitHub Actions job (`.github/workflows/pages.yml` runs `scripts/build-data.mjs`) every morning. It reads Raider.IO, Warcraft Logs and Blizzard, writes `data/builds/{spec}.json`, `data/tiers.json` and `data/meta.json`, and publishes them with the site. Uploads publish right away and keep the current data.
 
