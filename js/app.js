@@ -967,9 +967,11 @@
     const note = key === "shuffle" || key === "blitz"
       ? `Players of each spec rated ${br.cutoff} or higher, the rating of the ${br.players.toLocaleString()}th best player across every spec's ${esc(br.label)} ladder.`
       : `Current specs of the top ${br.players} players on the ${esc(br.label)} ladder (rated ${br.cutoff}+). Their spec today may not be the one they climbed with.`;
+    // A role with almost no players in this bracket (tanks in arena and Shuffle) would just be noise.
+    const thin = ["TANK", "HEALER", "DAMAGE"].filter(r => (br.roles?.[r] || []).length && Math.max(...br.roles[r].map(x => x.count)) < 5);
     const roleBlock = roleKey => {
       const rows = br.roles?.[roleKey] || [];
-      if (!rows.length) return "";
+      if (!rows.length || thin.includes(roleKey)) return "";
       const role = D.ROLES[roleKey];
       const groups = ["S", "A", "B", "C"].map(tier => ({ tier, specs: rows.filter(r => r.tier === tier) })).filter(g => g.specs.length);
       return `<section class="panel tier-role">
@@ -981,6 +983,7 @@
     body.innerHTML = `
       <div class="seg tier-seg" role="group" aria-label="Bracket">${avail.map(([k, l]) => `<a href="#/pvp/${k}" aria-pressed="${k === key}">${l}</a>`).join("")}</div>
       <p class="muted small">${note} Season ${pv.season}, updated ${new Date(pv.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}. Numbers are players, not win rates.</p>
+      ${thin.length ? `<p class="muted small">${thin.map(r => (r === "DAMAGE" ? "DPS" : D.ROLES[r].label + "s")).join(" and ")} aren't shown for ${esc(br.label)}: fewer than 5 of any spec made the cut.${key !== "blitz" && pv.brackets.blitz ? ` See <a href="#/pvp/blitz">Blitz</a> for tanks.` : ""}</p>` : ""}
       <div class="tier-grid">${["TANK", "HEALER", "DAMAGE"].map(roleBlock).join("")}</div>`;
   }
 

@@ -6,6 +6,7 @@
 - **PvP mode** on spec pages (replacing "PvP soon"): the talents and hero tree most top Solo Shuffle players run (Blitz or arena for tanks), their PvP talent picks, secondary stats, and an import string when a top player's loadout is a near match
 - **Search** in the header (or press `/`): specs, classes, every Retail talent (opens the right tree with the talent highlighted), dungeons, raid bosses, boss abilities, Classic talents and your characters, with keyboard navigation
 - The data job adds PvP leaderboards, PvP builds and a search index
+- PvP tier lists hide a role when fewer than 5 players of any spec made the cut (tanks in Solo Shuffle and arena), with a pointer to Blitz
 
 ## 2026-10 — Phase 6: Classic Era and TBC Anniversary
 
