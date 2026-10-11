@@ -2,7 +2,7 @@
 window.WOW_API = (() => {
   const base = String((window.WOW_CONFIG || {}).apiBase || "").replace(/\/+$/, "");
   const LOCAL_HOURS = 6;
-  const PREFIX = "wowc:v1:";
+  const PREFIX = "wowc:v2:";
 
   function readLocal(key) {
     try {

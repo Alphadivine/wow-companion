@@ -2,32 +2,23 @@
 window.WOW_TALENTS = (() => {
   const TYPE_LABEL = { ACTIVE: "Active ability", PASSIVE: "Passive", CHOICE: "Choice node" };
   const ROW_H = 74;
-  const MAX_COLS = 15;
 
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const initials = name => String(name || "?").replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(w => w && !/^(of|the|and)$/i.test(w)).slice(0, 2).map(w => w[0].toUpperCase()).join("") || "?";
 
-  // Works out a grid column/row for each node from Blizzard's raw positions (or display row/col).
+  // Works out where each node sits. Blizzard's raw positions use 600 units per column and row,
+  // with some nodes on half-steps, so positions snap to half a cell. Falls back to display row/col.
   function layout(nodes) {
-    const px = nodes.map(n => (n.x != null ? n.x : n.col ?? 0));
-    const py = nodes.map(n => (n.y != null ? n.y : n.row ?? 0));
-    const axis = vals => {
-      const distinct = [...new Set(vals)].sort((a, b) => a - b);
-      const min = distinct[0] ?? 0, max = distinct[distinct.length - 1] ?? 0;
-      let step = Infinity;
-      for (let i = 1; i < distinct.length; i++) step = Math.min(step, distinct[i] - distinct[i - 1]);
-      if (!isFinite(step) || step <= 0) return { idx: () => 0, count: 1 };
-      let count = Math.round((max - min) / step) + 1;
-      if (count > MAX_COLS) { // uneven spacing: fall back to proportional placement
-        count = MAX_COLS;
-        return { idx: v => Math.round((v - min) / (max - min) * (count - 1)), count };
-      }
-      return { idx: v => Math.round((v - min) / step), count };
-    };
-    const ax = axis(px), ay = axis(py);
+    const raw = nodes.every(n => n.x != null && n.y != null);
+    const px = nodes.map(n => (raw ? n.x / 600 : n.col ?? 0));
+    const py = nodes.map(n => (raw ? n.y / 600 : n.row ?? 0));
+    const minX = Math.min(...px), minY = Math.min(...py);
+    const snap = v => Math.round(v * 2) / 2;
+    const pos = nodes.map((n, i) => ({ c: snap(px[i] - minX), r: snap(py[i] - minY) }));
     return {
-      cols: ax.count, rows: ay.count,
-      pos: nodes.map((n, i) => ({ c: ax.idx(px[i]), r: ay.idx(py[i]) }))
+      cols: Math.ceil(Math.max(...pos.map(p => p.c))) + 1,
+      rows: Math.ceil(Math.max(...pos.map(p => p.r))) + 1,
+      pos
     };
   }
 
@@ -61,7 +52,7 @@ window.WOW_TALENTS = (() => {
     }).join("");
 
     container.innerHTML = `
-      <div class="tree" style="--cols:${cols};--tc:${color};height:${rows * ROW_H}px;max-width:${Math.max(cols * 74, 240)}px">
+      <div class="tree" style="--cols:${cols};--tc:${color};height:${rows * ROW_H}px;min-width:${cols * 44}px;max-width:${Math.max(cols * 60, 240)}px">
         <svg class="tree-lines" viewBox="0 0 ${cols * 100} ${rows * 100}" preserveAspectRatio="none" aria-hidden="true">${lines.join("")}</svg>
         ${buttons}
       </div>`;

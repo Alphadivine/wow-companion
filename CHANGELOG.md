@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10 — Talent trees match live Blizzard data
+
+- Spec pages now show only the two hero trees each spec can use (Blizzard sends every hero tree for the class)
+- Hero talents no longer appear inside the spec tree (Blizzard mixes them in; the Worker now separates them)
+- Talent tree layout follows Blizzard's exact positions, including half-step nodes, so trees look like they do in game; wide trees scroll sideways on phones instead of overlapping
+- Worker and browser caches bumped so the corrected trees load right away (redeploy the Worker to get this)
+
 ## 2026-10 — Phase 1: foundation and live talent trees
 
 - New Cloudflare Worker (`wow-companion-api`) that holds the Blizzard API keys, calls the Battle.net API, and caches classes, specs and talent trees for 24 hours (keeps serving the last good copy if Blizzard is down)
