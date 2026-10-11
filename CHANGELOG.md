@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10 — New look, part 2: every other page
+
+- Page headers across the app use the new large titles, with switches (Mythic+ / Raid / PvP, brackets, Classic versions) beside the title
+- **Tier lists and PvP**: one colored band per tier with a tile for each spec (class icon, name, score); your main's spec is outlined
+- **M+ & Raid**: dungeons as picture cards, the raid as a banner with numbered bosses
+- **Dungeon and boss pages**: the dungeon or raid art fills the header; a bar under it switches All / Tank / Healer / DPS notes and jumps to must-kicks, trash or any boss; must-kick casts sit beside dangerous trash; each boss is a numbered section with role notes and its abilities listed directly (the first one open), with Blizzard's own role notes folded underneath
+- **My Characters**: your main gets a large card with its character model, item level, Mythic+ rating and raid progress; characters within 10 levels of the cap show as class-colored cards with a level bar; the rest fold into a short list
+- **Character pages** open with the character model, the same headline numbers and the "Make this my main" button
+- **Classic** pages get a warmer theme; class pages show the endgame builds as cards to pick from, talent trees with their original backgrounds, and pre-raid gear as a two-column list
+- **Leveling** class pages get the class header with the one tip that matters beside it
+- Spec page headers are less gray
+- My Characters uses the same main as Home when the first max-level character can't be loaded
+
 ## 2026-10 — New look, part 1: Home and spec pages
 
 - New violet theme across the app with a Marcellus heading font, replacing the gold-and-black look

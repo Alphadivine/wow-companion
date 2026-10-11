@@ -1,5 +1,5 @@
 /* WoW Companion service worker: cache the app shell, network-first for pages. */
-const CACHE = "wow-companion-v3";
+const CACHE = "wow-companion-v4";
 const SHELL = ["./", "index.html", "css/style.css", "config.js", "js/data.js", "js/api.js", "js/talents.js", "js/app.js", "icons/icon.svg", "manifest.webmanifest"];
 
 self.addEventListener("install", e => {

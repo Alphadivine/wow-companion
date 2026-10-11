@@ -56,12 +56,11 @@
     setTimeout(() => { const b = document.getElementById(id); if (b) b.addEventListener("click", retry); });
     return `<div class="errbox" role="alert"><p>${esc(msg)}</p>${err && err.setup ? "" : `<button class="btn" id="${id}" type="button">Try again</button>`}</div>`;
   }
-  function pageHero({ kicker, title, sub = "", tint = "rgba(143,120,255,0.16)", art = "", extra = "" }) {
-    return `<section class="hero" style="--tint:${tint}">
-      ${art}
-      <div class="wrap hero-in">
+  function pageHero({ kicker, title, sub = "", extra = "" }) {
+    return `<section class="hero hero2">
+      <div class="wrap hero2-in">
         <div class="hero-text rise">
-          <span class="kicker">${kicker}</span>
+          ${kicker ? `<span class="kicker">${kicker}</span>` : ""}
           <h1>${title}</h1>
           ${sub ? `<p class="hero-sub">${sub}</p>` : ""}
         </div>
@@ -69,6 +68,18 @@
       </div>
     </section>`;
   }
+  // Tier bands shared by the Mythic+, Raid and PvP tier lists: one coloured band per tier, a tile per spec.
+  function tierBands(rows, { value, href, mine, icons }) {
+    const groups = ["S", "A", "B", "C"].map(tier => ({ tier, specs: rows.filter(r => r.tier === tier) })).filter(g => g.specs.length);
+    return groups.map(g => `<div class="band t-${g.tier}"><span class="band-l" aria-label="${g.tier} tier">${g.tier}</span><div class="band-specs">${g.specs.map(r => {
+      const col = colorOf(r.classId), me = mine && r.spec === mine;
+      return `<a class="tok${me ? " mine" : ""}" href="${href(r)}" style="--ic:${col}">
+        ${iconFrame(icons?.get(r.classId), (r.className || "?")[0], col, "tok-ic")}
+        <span class="tok-txt"><strong>${esc(r.name || `Spec ${r.spec}`)}</strong><small>${esc(r.className || "")}${me ? ", your main" : ""}</small></span>
+        <span class="tok-val">${value(r)}</span></a>`;
+    }).join("")}</div></div>`).join("");
+  }
+  const roleTitle = k => (k === "DAMAGE" ? "Damage" : D.ROLES[k].label + "s");
   const moonArt = color => `<svg class="hero-art" viewBox="0 0 1440 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
       <circle cx="1130" cy="110" r="62" fill="#f3e3b5" opacity=".9"/><circle cx="1154" cy="96" r="56" fill="#1a1433"/>
       <circle cx="1130" cy="110" r="104" fill="none" stroke="${color}" stroke-opacity=".3" stroke-width="2"/>
@@ -161,6 +172,7 @@
     }
     const bosses = (rJ?.encounters || []).map(e => e.name);
     if (!bosses.length) for (const x of rNotes?.bosses || []) bosses.push(x.name);
+    if (c?.specId) store.set("mainSpec", c.specId);
     const heroEl = document.getElementById("homeHero");
     if (!heroEl) return;
     if (c) heroEl.innerHTML = homeMain(c, b, zone, bosses.length);
@@ -324,7 +336,7 @@
 
   async function pageSpecs(classId) {
     main.innerHTML = `
-      ${pageHero({ kicker: "Retail · Talents from the Battle.net API", title: "Classes &amp; specs", sub: "Choose a class, then a spec to see its class, hero and spec talent trees.", tint: "rgba(194,124,245,0.16)" })}
+      ${pageHero({ title: "Classes &amp; specs", sub: "Choose a class, then a spec to see its class, hero and spec talent trees, top builds and best in slot." })}
       <div class="wrap stack">
         <div id="classGrid">${loading()}</div>
         <div id="specList"></div>
@@ -593,7 +605,7 @@
   async function pageTiers(which) {
     which = which === "raid" ? "raid" : "mplus";
     main.innerHTML = `
-      ${pageHero({ kicker: "Retail · Updated every morning", title: "Tier lists", sub: "Which specs top players bring right now: Mythic+ from Raider.IO's top runs, raid from Warcraft Logs' top parses." })}
+      ${pageHero({ title: "Tier lists", sub: `<span id="tierNote">Which specs top players bring right now: Mythic+ from Raider.IO's top runs, raid from Warcraft Logs' top parses.</span>`, extra: `<div class="seg pill-seg rise2" role="group" aria-label="Content" id="tierSeg"></div>` })}
       <div class="wrap stack"><div id="tierBody">${loading("Loading tier lists…")}</div></div>`;
     const [tiers, cls] = await Promise.all([API.tiers(), API.classes().catch(() => API.classes()).catch(() => null)]);
     const body = document.getElementById("tierBody");
@@ -601,30 +613,25 @@
     if (!tiers || !tiers[which]) { body.innerHTML = `<section class="panel"><p>Tier lists haven't been built yet. They're created by the daily data job; check back after it runs.</p></section>`; return; }
     const specInfo = new Map();
     for (const c of cls?.classes || []) for (const sp of c.specs) specInfo.set(sp.id, { name: sp.name, className: c.name, classId: c.id });
+    const icons = new Map((cls?.classes || []).map(c => [c.id, c.icon]));
     const t = tiers[which];
     const note = which === "mplus"
       ? `Share of slots in the top ${t.runs} ${esc(t.season?.name || "")} runs. A tank or healer share is out of every run; a DPS share is out of the three DPS slots.`
       : `Median ${"performance"} of the top 50 players per spec on ${(t.bosses || []).map(esc).join(", ")}, compared with the best spec in the same role. Bosses rotate daily.`;
     const roleBlock = roleKey => {
-      const rows = t.roles?.[roleKey] || [];
-      const role = D.ROLES[roleKey];
-      const groups = ["S", "A", "B", "C"].map(tier => ({ tier, specs: rows.filter(r => r.tier === tier) })).filter(g => g.specs.length);
-      return `<section class="panel tier-role">
-        <h2>${svgIcon(role.icon, role.color, 20, 2)} ${roleKey === "DAMAGE" ? "DPS" : role.label + "s"}</h2>
-        ${groups.map(g => `<div class="tier-row"><span class="tier-letter t-${g.tier}">${g.tier}</span><div class="tier-specs">${g.specs.map(r => {
-          const info = specInfo.get(r.spec) || (r.name ? { name: r.name, className: r.className || "", classId: r.classId || 0 } : { name: `Spec ${r.spec}`, className: "", classId: 0 });
-          const value = which === "mplus" ? `${r.share}%` : `${r.score}%`;
-          return `<a class="tier-spec" href="#/spec/${r.spec}" style="--ic:${colorOf(info.classId)}"><span class="ts-name">${esc(info.name)} <span>${esc(info.className)}</span></span><span class="ts-val">${value}</span></a>`;
-        }).join("")}</div></div>`).join("")}
+      const rows = (t.roles?.[roleKey] || []).map(r => ({ ...r, ...(specInfo.get(r.spec) ? { name: specInfo.get(r.spec).name, className: specInfo.get(r.spec).className, classId: specInfo.get(r.spec).classId } : {}) }));
+      if (!rows.length) return "";
+      return `<section class="tier-role2${roleKey === "DAMAGE" ? " wide" : ""}" aria-labelledby="tr-${roleKey}">
+        <h2 id="tr-${roleKey}" class="big-h">${roleTitle(roleKey)} <span>${rows.length} specs</span></h2>
+        ${tierBands(rows, { value: r => (which === "mplus" ? `${r.share}%` : r.score), href: r => `#/spec/${r.spec}`, mine: store.get("mainSpec"), icons })}
       </section>`;
     };
-    body.innerHTML = `
-      <div class="seg tier-seg" role="group" aria-label="Content">
-        <a href="#/tiers/mplus" aria-pressed="${which === "mplus"}">Mythic+</a>
-        <a href="#/tiers/raid" aria-pressed="${which === "raid"}">Raid</a>
-      </div>
-      <p class="muted small">${note} Updated ${new Date(t.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.</p>
-      <div class="tier-grid">${["TANK", "HEALER", "DAMAGE"].map(roleBlock).join("")}</div>`;
+    document.getElementById("tierSeg").innerHTML = `
+      <a href="#/tiers/mplus" aria-pressed="${which === "mplus"}">Mythic+</a>
+      <a href="#/tiers/raid" aria-pressed="${which === "raid"}">Raid</a>
+      <a href="#/pvp">PvP</a>`;
+    document.getElementById("tierNote").textContent = `${note.replace(/<[^>]+>/g, "")} Updated ${new Date(t.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`;
+    body.innerHTML = `<div class="tier-grid2">${["TANK", "HEALER", "DAMAGE"].map(roleBlock).join("")}</div>`;
   }
 
   /* ------------------------------ My Characters ------------------------------ */
@@ -670,7 +677,7 @@
 
     if (!saved || !Array.isArray(saved.list)) {
       main.innerHTML = `
-        ${pageHero({ kicker: "Retail · Battle.net", title: "My characters", sub: "Sign in once to load your characters, then see how each one's gear, talents and stats compare with the top build." })}
+        ${pageHero({ title: "My characters", sub: "Sign in once to load your characters, then see how each one's gear, talents and stats compare with the top build." })}
         <div class="wrap stack">${failNote}
           <section class="panel locked-big signin">
             <div class="panel-ic big">${svgIcon("M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0", "#e6c46a", 34, 1.6)}</div>
@@ -684,31 +691,47 @@
 
     const list = saved.list;
     const maxLevel = Math.max(0, ...list.map(c => c.level));
-    const top = list.filter(c => c.level === maxLevel);
-    const rest = list.filter(c => c.level !== maxLevel);
-    const card = (c, live) => `
-      <a class="char-card${live ? " live" : ""}" href="${charHref(c)}" style="--ic:${colorOf(c.classId)}" data-key="${esc(c.realmSlug + "/" + c.name)}">
-        ${iconFrame("", c.name[0], colorOf(c.classId), "avatar")}
-        <span class="cc-body">
-          <strong class="cc-name">${esc(c.name)}</strong>
-          <span class="cc-line"><span class="cc-spec">${esc(c.className)}</span> · Level ${c.level}</span>
-          <span class="cc-line muted">${esc(c.realm)}</span>
-          ${live ? `<span class="cc-stats"><span class="cc-chip">ilvl …</span></span>` : ""}
-        </span>
+    const me = mainChar();
+    const isMe = c => me && mainKey(c) === mainKey(me);
+    // Cards for everyone within 10 levels of the cap; the rest fold into a short list.
+    const near = list.filter(c => c.level >= maxLevel - 10 && !isMe(c)).sort((a, z) => z.level - a.level || a.name.localeCompare(z.name));
+    const rest = list.filter(c => c.level < maxLevel - 10 && !isMe(c)).sort((a, z) => z.level - a.level);
+    const cls = await API.classes().catch(() => null);
+    const icons = new Map((cls?.classes || []).map(x => [x.id, x.icon]));
+    const card = c => `
+      <a class="char-card live" href="${charHref(c)}" style="--ic:${colorOf(c.classId)}" data-key="${esc(c.realmSlug + "/" + c.name)}">
+        <span class="cc-top">${iconFrame(icons.get(c.classId), c.name[0], colorOf(c.classId), "avatar")}
+          <span class="cc-body"><strong class="cc-name">${esc(c.name)}</strong>
+          <span class="cc-line"><span class="cc-spec">${esc(c.race || "")} ${esc(c.className)}</span>, level ${c.level}</span>
+          <span class="cc-line muted">${esc(c.realm)}</span></span></span>
+        <span class="cc-bar" aria-hidden="true"><span style="width:${Math.round(c.level / maxLevel * 100)}%"></span></span>
+        <span class="cc-stats">${c.level < maxLevel ? `<span class="cc-chip">${maxLevel - c.level} level${maxLevel - c.level === 1 ? "" : "s"} to ${maxLevel}</span>` : ""}<span class="cc-chip load">Loading…</span></span>
       </a>`;
+    const groups = [...new Set(near.map(c => c.level === maxLevel ? `Level ${maxLevel}` : `Level ${Math.floor(c.level / 10) * 10} to ${Math.min(maxLevel - 1, Math.floor(c.level / 10) * 10 + 9)}`))];
+    const groupOf = c => (c.level === maxLevel ? `Level ${maxLevel}` : `Level ${Math.floor(c.level / 10) * 10} to ${Math.min(maxLevel - 1, Math.floor(c.level / 10) * 10 + 9)}`);
     main.innerHTML = `
-      ${pageHero({ kicker: "Retail · Battle.net", title: "My characters", sub: `${list.length} character${list.length === 1 ? "" : "s"} on your account. List saved ${ago(saved.at)}.`,
+      ${pageHero({ title: "My characters", sub: `${list.length} character${list.length === 1 ? "" : "s"} on your account. List saved ${ago(saved.at)}.`,
         extra: `<div class="hero-actions rise2">${signInButton("Update list")}<button type="button" class="btn" id="forgetBtn">Forget list</button></div>` })}
-      <div class="wrap stack">${failNote}
-        ${list.length ? `
-        <section aria-labelledby="max-h">
-          <div class="sec-head"><h2 id="max-h">Level ${maxLevel}</h2><span class="muted small">Pick a character to compare it with the top build</span></div>
-          <div class="char-grid">${top.map(c => card(c, true)).join("")}</div>
-        </section>
+      <div class="wrap stack chars-stack">${failNote}
+        ${me ? `<a class="main-card" id="mainCard" href="${charHref(me)}" style="--ic:${colorOf(me.classId)}">
+          <span class="mc-art">${ringArt(colorOf(me.classId), "#8fb3ff")}</span>
+          <span class="mc-txt">
+            <span class="mc-k">Your main</span>
+            <strong class="mc-name">${esc(me.name)}</strong>
+            <span class="mc-line">Level ${me.level} ${esc(me.race || "")} ${esc(me.className)} on ${esc(me.realm)}</span>
+            <span class="mc-tiles">${loading("Loading from Blizzard…")}</span>
+            <span class="mc-go">Compare with the top build</span>
+          </span>
+        </a>` : ""}
+        ${groups.map(g => `<section aria-label="${esc(g)}">
+          <div class="sec-head"><h2 class="big-h">${esc(g)}</h2></div>
+          <div class="char-grid">${near.filter(c => groupOf(c) === g).map(card).join("")}</div>
+        </section>`).join("")}
         ${rest.length ? `<details class="more-chars"${store.get("showAllChars") ? " open" : ""}>
-          <summary>Show ${rest.length} character${rest.length === 1 ? "" : "s"} still leveling</summary>
-          <div class="char-grid">${rest.map(c => card(c, false)).join("")}</div>
-        </details>` : ""}` : `<section class="panel locked-big"><h2>No characters found</h2><p>Battle.net didn't return any World of Warcraft characters for this account in the US region.</p></section>`}
+          <summary>${rest.length} character${rest.length === 1 ? "" : "s"} still leveling</summary>
+          <ul class="lvl-list">${rest.map(c => `<li><a href="${charHref(c)}" style="--ic:${colorOf(c.classId)}"><strong>${esc(c.name)}</strong><span>${esc(c.className)}, ${esc(c.realm)}</span><span class="lv">${c.level}</span></a></li>`).join("")}</ul>
+        </details>` : ""}
+        ${!list.length ? `<section class="panel locked-big"><h2>No characters found</h2><p>Battle.net didn't return any World of Warcraft characters for this account in the US region.</p></section>` : ""}
       </div>`;
 
     document.getElementById("forgetBtn").addEventListener("click", () => {
@@ -718,27 +741,59 @@
     const det = main.querySelector(".more-chars");
     if (det) det.addEventListener("toggle", () => store.set("showAllChars", det.open));
 
-    // Fill in spec, item level, M+ score and portraits for max-level characters, three at a time.
     const tiers = await API.tiers();
     const zone = tiers?.raid?.zone?.name || tiers?.raid?.zone || "";
-    const queue = top.slice();
+    // The main's card gets the full character model and headline numbers.
+    if (me) (async () => {
+      const el = document.getElementById("mainCard");
+      try {
+        // Same rule as Home: a picked main first, otherwise the first max-level character Blizzard can load.
+        const cands = [me, ...(store.get("main") ? [] : list.filter(x => x.level === maxLevel && mainKey(x) !== mainKey(me)))].slice(0, 4);
+        let d = null, who = me, lastErr = null;
+        for (const cand of cands) { try { d = await API.character(cand.realmSlug, cand.name); who = cand; break; } catch (e) { lastErr = e; } }
+        if (!d) throw lastErr;
+        if (!el?.isConnected) return;
+        if (who !== me) {
+          store.set("autoMain", mainKey(who));
+          el.href = charHref(who); el.style.setProperty("--ic", colorOf(who.classId));
+          el.querySelector(".mc-name").textContent = d.name;
+          el.querySelector(".ring-art")?.remove(); el.querySelector(".mc-art").insertAdjacentHTML("afterbegin", ringArt(colorOf(who.classId), "#8fb3ff"));
+          main.querySelector(`.char-card[data-key="${CSS.escape(who.realmSlug + "/" + who.name)}"]`)?.remove();
+          // The character that couldn't load goes back among the cards.
+          const grid = main.querySelector(".char-grid");
+          if (grid) { grid.insertAdjacentHTML("afterbegin", card(me)); grid.querySelector(".cc-chip.load").outerHTML = `<span class="cc-chip warn">Hidden or inactive</span>`; }
+        }
+        const render = renderOf(d.avatar);
+        if (render) el.querySelector(".mc-art").insertAdjacentHTML("beforeend", `<img class="mc-render" src="${esc(render)}" alt="${esc(d.name)}'s character model" onerror="this.remove()">`);
+        if (d.specName) el.querySelector(".mc-line").textContent = `Level ${d.level} ${d.race} ${d.specName} ${d.className} on ${d.realm}`;
+        const raid = raidSummary(d, zone);
+        el.querySelector(".mc-tiles").innerHTML = `${tile(d.ilvl, "Item level")}${d.mplus ? tile(`<span style="color:${esc(d.mplus.color || "inherit")}">${d.mplus.rating}</span>`, "Mythic+ rating") : tile("0", "Mythic+ rating", true)}${raid ? tile(esc(raid.text === "Not started" ? "None" : raid.text.split(" ").pop()), esc(raid.raid), raid.text === "Not started") : ""}`;
+        if (d.specName) el.querySelector(".mc-go").textContent = `Compare with the top ${d.specName} build`;
+      } catch (err) {
+        if (el?.isConnected) el.querySelector(".mc-tiles").innerHTML = `<span class="cc-chip warn">${err.status === 404 ? "Hidden or inactive" : "Couldn't load"}</span>`;
+      }
+    })();
+    // Fill in spec, item level, M+ score and portraits for the cards, three at a time.
+    const queue = near.slice(0, 24);
     const work = async () => {
       for (let c; (c = queue.shift());) {
         const el = main.querySelector(`.char-card[data-key="${CSS.escape(c.realmSlug + "/" + c.name)}"]`);
         if (!el) continue;
+        const load = el.querySelector(".cc-chip.load");
         try {
           const d = await API.character(c.realmSlug, c.name);
           if (!el.isConnected) return;
           if (d.avatar) el.querySelector(".iframe").insertAdjacentHTML("afterbegin", `<img src="${esc(d.avatar)}" alt="" loading="lazy" onerror="this.remove()">`);
           if (d.specName) el.querySelector(".cc-spec").textContent = `${d.specName} ${d.className}`;
           const raid = raidSummary(d, zone);
-          el.querySelector(".cc-stats").innerHTML = `<span class="cc-chip">ilvl <strong>${d.ilvl}</strong></span>${d.mplus ? `<span class="cc-chip">M+ <strong style="color:${esc(d.mplus.color || "inherit")}">${d.mplus.rating}</strong></span>` : ""}${raid ? `<span class="cc-chip">${esc(raid.text)}</span>` : ""}`;
+          load.outerHTML = `<span class="cc-chip">ilvl <strong>${d.ilvl}</strong></span>${d.mplus ? `<span class="cc-chip">M+ <strong style="color:${esc(d.mplus.color || "inherit")}">${d.mplus.rating}</strong></span>` : ""}${raid && c.level === maxLevel ? `<span class="cc-chip">${esc(raid.text)}</span>` : ""}`;
         } catch (err) {
-          if (el.isConnected) el.querySelector(".cc-stats").innerHTML = `<span class="cc-chip warn">${err.status === 404 ? "Hidden or inactive" : "Couldn't load"}</span>`;
+          if (el.isConnected && load) load.outerHTML = `<span class="cc-chip warn">${err.status === 404 ? "Hidden or inactive" : "Couldn't load"}</span>`;
         }
       }
     };
     await Promise.all([work(), work(), work()]);
+    for (const el of main.querySelectorAll(".cc-chip.load")) el.remove();
   }
 
   const TOP_SLOT = { "Ring 1": "Rings", "Ring 2": "Rings", "Trinket 1": "Trinkets", "Trinket 2": "Trinkets" };
@@ -771,21 +826,24 @@
     let mode = modes.find(m => m.id === store.get("buildMode")) || modes[0] || null;
 
     main.innerHTML = `
-      <section class="hero spec-hero char-hero" style="--tint:${rgba(col, 0.28)};--ic:${col}">
-        ${moonArt(col)}
-        <div class="wrap hero-in">
-          ${iconFrame(c.avatar || spec.icon, c.name[0], col, "xl")}
-          <div class="hero-text rise">
-            <a class="back" href="#/characters">← All characters</a>
-            <span class="kicker" style="color:${col}">Level ${c.level} ${esc(c.race)} · ${esc(c.realm)}${c.guild ? ` · ${esc(c.guild)}` : ""}</span>
-            <h1>${esc(c.name)}</h1>
-            <p class="hero-sub">${esc(c.specName || spec.name)} ${esc(c.className)}</p>
-            <div class="badges">
-              <span class="tier-badge">Item level <strong>${c.ilvl}</strong></span>
-              ${c.mplus ? `<span class="tier-badge">Mythic+ <strong style="color:${esc(c.mplus.color || "inherit")}">${c.mplus.rating}</strong></span>` : ""}
-              ${raid ? `<span class="tier-badge">${esc(raid.raid)} <strong>${esc(raid.text)}</strong></span>` : ""}
+      <section class="home-hero char-hero2" style="--ic:${col}">
+        <div class="wrap hh-grid">
+          <div class="hh-text rise">
+            <a class="back" href="#/characters">All characters</a>
+            <h1 class="hh-name">${esc(c.name)}</h1>
+            <p class="hh-line">Level ${c.level} ${esc(c.race)} ${esc(c.specName || spec.name)} ${esc(c.className)} on ${esc(c.realm)}</p>
+            ${c.guild ? `<p class="hh-guild">&lt;${esc(c.guild)}&gt;</p>` : ""}
+            <div class="hh-tiles">
+              ${tile(c.ilvl, "Item level")}
+              ${c.mplus ? tile(`<span style="color:${esc(c.mplus.color || "inherit")}">${c.mplus.rating}</span>`, "Mythic+ rating") : tile("0", "Mythic+ rating", true)}
+              ${raid ? tile(esc(raid.text === "Not started" ? "None" : raid.text.split(" ").pop()), esc(raid.text === "Not started" ? raid.raid : `${raid.raid}, ${raid.text.split(" ").slice(0, -1).join(" ")}`), raid.text === "Not started") : ""}
             </div>
-            <div class="hero-actions"><button type="button" class="btn" id="mainBtn" aria-pressed="false">Make this my main</button></div>
+            <div class="hh-actions"><button type="button" class="btn" id="mainBtn" aria-pressed="false">Make this my main</button></div>
+          </div>
+          <div class="hh-art short">
+            ${ringArt(col, "#8fb3ff")}
+            ${renderOf(c.avatar) ? `<img class="hh-render" src="${esc(renderOf(c.avatar))}" alt="${esc(c.name)}'s character model" onerror="this.closest('.hh-art').classList.add('no-render')">` : ""}
+            ${c.avatar ? `<img class="hh-avatar" src="${esc(c.avatar)}" alt="" onerror="this.remove()">` : ""}
           </div>
         </div>
       </section>
@@ -967,7 +1025,7 @@
     if (classId) return pageLevelingClass(notes, classes.find(c => String(c.id) === String(classId)), tipFor);
 
     main.innerHTML = `
-      ${pageHero({ kicker: "Retail · Midnight", title: "Leveling", sub: `The fastest way to level ${notes.levelCap ? `to ${notes.levelCap}` : ""}, and the spec, buttons and talents to use for each class.` })}
+      ${pageHero({ kicker: "Midnight", title: "Leveling", sub: `The fastest way to level ${notes.levelCap ? `to ${notes.levelCap}` : ""}, and the spec, buttons and talents to use for each class.` })}
       <div class="wrap stack">
         <section class="panel" aria-labelledby="route-h">
           <h2 id="route-h">Route to ${notes.levelCap || "max level"}</h2>
@@ -996,16 +1054,15 @@
     const best = t && specByName(t.bestSpec?.name), alt = t && specByName(t.alternative?.name);
     const talentSpec = t?.talents?.spec ? specByName(t.talents.spec.replace(/\s*\(.*\)$/, "")) : best;
     main.innerHTML = `
-      <section class="hero spec-hero" style="--tint:${rgba(col, 0.28)};--ic:${col}">
-        ${moonArt(col)}
-        <div class="wrap hero-in">
-          ${iconFrame(c.icon, c.name[0], col, "xl")}
-          <div class="hero-text rise">
-            <a class="back" href="#/leveling">← All classes</a>
-            <span class="kicker" style="color:${col}">Leveling · Retail</span>
-            <h1>${esc(c.name)}</h1>
-            ${t ? `<p class="hero-sub">${esc(t.tip)}</p>` : ""}
+      <section class="cl-hero lv-hero" style="--ic:${col}">
+        <div class="wrap cl-hero-in">
+          <div class="cl-title rise">
+            ${iconFrame(c.icon, c.name[0], col, "xl")}
+            <div><a class="back" href="#/leveling">All classes</a>
+              <p class="cl-ver">Leveling in Midnight</p>
+              <h1>${esc(c.name)}</h1></div>
           </div>
+          ${t ? `<p class="lv-tip">${esc(t.tip)}</p>` : ""}
         </div>
       </section>
       <div class="wrap stack">
@@ -1057,21 +1114,22 @@
     const roleCols = [["tank", "Tank"], ["healer", "Healer"], ["dps", "DPS"]].filter(([k]) => show(k));
     const noteCols = note ? [...roleCols, ["everyone", "Everyone"]].filter(([k]) => (note[k] || []).length).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4>${bullets(note[k])}</div>`).join("") : "";
     const blizzRoles = journal?.roles ? roleCols.filter(([k]) => journal.roles[k]).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4><p class="pre">${rich(journal.roles[k])}</p></div>`).join("") : "";
-    const sec = (list, d = 0) => (list || []).map(x => `
-      <details class="ab"${d === 0 ? " open" : ""}><summary>${x.icon ? `<span class="ab-ic"><img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.remove()"></span>` : x.spell ? `<span class="ab-ic" data-spell="${x.spell}"></span>` : ""}<span>${esc(x.title)}</span>${x.meta ? `<small class="ab-meta">${esc(x.meta)}</small>` : ""}</summary>
+    const sec = (list, d = 0) => (list || []).map((x, i) => `
+      <details class="ab${d === 0 ? " top" : ""}"${d === 0 && i === 0 ? " open" : ""}><summary>${x.icon ? `<span class="ab-ic"><img src="${esc(x.icon)}" alt="" loading="lazy" onerror="this.remove()"></span>` : x.spell ? `<span class="ab-ic" data-spell="${x.spell}"></span>` : ""}<span>${esc(x.title)}</span>${x.meta ? `<small class="ab-meta">${esc(x.meta)}</small>` : ""}</summary>
         ${x.text ? `<p class="pre">${rich(x.text)}</p>` : ""}${x.sections ? `<div class="ab-kids">${sec(x.sections, d + 1)}</div>` : ""}
       </details>`).join("");
     return `
-      ${note?.summary || journal?.description ? `<p class="boss-sum">${esc(note?.summary || journal.description)}</p>` : ""}
+      ${!opts.noSum && (note?.summary || journal?.description) ? `<p class="boss-sum">${esc(note?.summary || journal.description)}</p>` : ""}
       ${note?.keyAbilities?.length ? `<div class="chips">${note.keyAbilities.map(a => `<span class="chip">${esc(a)}</span>`).join("")}</div>` : ""}
       ${noteCols ? `<div class="role-grid">${noteCols}</div>` : ""}
       ${opts.raid && note && (note.heroic?.length || note.mythic?.length) ? `<div class="role-grid diff-grid">${note.heroic?.length ? `<div class="role-col"><h4>Heroic changes</h4>${bullets(note.heroic)}</div>` : ""}${note.mythic?.length ? `<div class="role-col"><h4>Mythic changes</h4>${bullets(note.mythic)}</div>` : ""}</div>` : ""}
       ${opts.raid && note?.phases?.length ? `<div class="phases"><h4>Phases</h4><ol>${note.phases.map(p => `<li><strong>${esc(p.name)}</strong> ${esc(p.note)}</li>`).join("")}</ol></div>` : ""}
-      ${journal ? `<details class="journal"${opts.openJournal ? " open" : ""}><summary>Full ability breakdown <span class="muted small">from Blizzard's Adventure Guide</span></summary>
-        ${blizzRoles ? `<h4 class="j-h">Blizzard's role notes</h4><div class="role-grid">${blizzRoles}</div>` : ""}
+      ${journal ? `<div class="journal2">
+        <h3 class="sub-h2">Abilities</h3>
         <div class="abilities">${sec(journal.sections)}</div>
+        ${blizzRoles ? `<details class="blz-roles"><summary>Blizzard's role notes</summary><div class="role-grid">${blizzRoles}</div></details>` : ""}
         ${JSON.stringify(journal.sections).includes('"textSource":"wowhead"') ? `<p class="muted small">Ability text and icons from <a href="https://www.wowhead.com" target="_blank" rel="noopener">Wowhead</a>; structure and role notes from Blizzard's Adventure Guide.</p>` : ""}
-      </details>` : `<p class="muted small">Blizzard's Adventure Guide for this boss hasn't been loaded yet; it arrives with the next daily data refresh.</p>`}`;
+      </div>` : `<p class="muted small">Blizzard's Adventure Guide for this boss hasn't been loaded yet; it arrives with the next daily data refresh.</p>`}`;
   }
   async function fillSpellIcons(root) {
     const els = [...root.querySelectorAll("[data-spell]")];
@@ -1095,27 +1153,43 @@
 
     const tab = kind === "raid" ? "raid" : "mplus";
     main.innerHTML = `
-      ${pageHero({ kicker: `Retail · ${esc(dNotes?.season || "This season")}`, title: "M+ & Raid", sub: "Every dungeon in this season's Mythic+ rotation and every boss in the current raid: role notes, must-kick casts and the full ability breakdown." })}
-      <div class="wrap stack">
-        <div class="seg" role="group" aria-label="Content"><a href="#/dungeons" aria-pressed="${tab === "mplus"}">Mythic+ dungeons</a><a href="#/dungeons/raid" aria-pressed="${tab === "raid"}">${esc(raidName)}</a></div>
+      ${pageHero({ kicker: esc(dNotes?.season || "This season"), title: "M+ &amp; Raid", sub: "Every dungeon in this season's Mythic+ rotation and every boss in the current raid: role notes, must-kick casts and the full ability breakdown.",
+        extra: `<div class="seg pill-seg rise2" role="group" aria-label="Content"><a href="#/dungeons" aria-pressed="${tab === "mplus"}">Mythic+ dungeons</a><a href="#/dungeons/raid" aria-pressed="${tab === "raid"}">${esc(raidName)}</a></div>` })}
+      <div class="wrap stack guide-stack">
         ${tab === "mplus" ? `
-          <div class="guide-grid">${dungeons.map(d => `
-            <a class="guide-card lift" href="#/dungeons/d/${slugOf(d.note.name)}">
-              ${d.journal?.image ? `<img class="gc-img" src="${esc(d.journal.image)}" alt="" loading="lazy" onerror="this.remove()">` : `<span class="gc-img ph"></span>`}
-              <span class="gc-body"><strong>${esc(d.note.name)}</strong><small>${d.note.bosses.length} bosses · ${d.note.mustKick?.length || 0} must-kick casts</small><span class="gc-sum">${esc(d.note.summary)}</span></span>
+          <div class="dg-cards">${dungeons.map(d => `
+            <a class="dg-card" href="#/dungeons/d/${slugOf(d.note.name)}">
+              <span class="dg-art">${d.journal?.image ? `<img src="${esc(d.journal.image)}" alt="" loading="lazy" onerror="this.remove()">` : ""}<strong>${esc(d.note.name)}</strong></span>
+              <span class="dg-body"><small>${d.note.bosses.length} bosses, ${d.note.mustKick?.length || 0} must-kick casts</small><span>${esc(d.note.summary)}</span></span>
             </a>`).join("")}</div>
-          ${sourceList(null)}<p class="muted small">Notes checked ${esc(dNotes?.checked || "")} from Method, Icy Veins and Raider.IO; ability details come from Blizzard's Adventure Guide and update with each patch.</p>`
+          <p class="muted small">Notes checked ${esc(dNotes?.checked || "")} from Method, Icy Veins and Raider.IO; ability details come from Blizzard's Adventure Guide and update with each patch.</p>`
         : `
-          <section class="panel raid-head">
-            ${rJ?.image ? `<img class="raid-img" src="${esc(rJ.image)}" alt="" onerror="this.remove()">` : ""}
-            <div><h2>${esc(raidName)}</h2>${rJ?.description ? `<p>${esc(rJ.description)}</p>` : ""}
-            <p class="muted small">Bosses are listed in the Adventure Guide's order. The raid opens up after the first boss, so your kill order can differ.</p></div>
-          </section>
-          <ol class="boss-list">${bossOrder.map((b, i) => { const nm = b.note?.name || b.journal?.name; return `
-            <li><a class="boss-row lift" href="#/dungeons/raid/${slugOf(nm)}"><span class="boss-n">${i + 1}</span><span><strong>${esc(nm)}</strong><small>${esc(b.note?.summary || b.journal?.description || "")}</small></span></a></li>`; }).join("")}</ol>
+          <div class="raid-feature static">
+            ${rJ?.image ? `<img src="${esc(rJ.image)}" alt="" onerror="this.remove()">` : ""}
+            <span class="rf-in"><span class="rf-k">Current raid</span><strong class="rf-name">${esc(raidName)}</strong>${rJ?.description ? `<span class="rf-line">${esc(rJ.description)}</span>` : ""}</span>
+          </div>
+          <p class="muted small">Bosses are listed in the Adventure Guide's order. The raid opens up after the first boss, so your kill order can differ.</p>
+          <ol class="boss-list2">${bossOrder.map((b, i) => { const nm = b.note?.name || b.journal?.name; return `
+            <li><a class="boss-row2" href="#/dungeons/raid/${slugOf(nm)}"><span class="boss-num" aria-hidden="true">${i + 1}</span><span><strong>${esc(nm)}</strong><small>${esc(b.note?.summary || b.journal?.description || "")}</small></span></a></li>`; }).join("")}</ol>
           <p class="muted small">Notes checked ${esc(rNotes?.checked || "")}; ability details come from Blizzard's Adventure Guide.</p>`}
       </div>`;
   }
+
+  // Full-width art header used by dungeon and boss pages.
+  const artHero = ({ img, back, title, sub, chips = [] }) => `<section class="art-hero"${img ? ` style="--art:url('${esc(img)}')"` : ""}>
+      <div class="wrap art-in rise">
+        ${back}
+        <h1>${title}</h1>
+        ${sub ? `<p>${sub}</p>` : ""}
+        ${chips.length ? `<div class="art-chips">${chips.map(c => `<span>${c}</span>`).join("")}</div>` : ""}
+      </div>
+    </section>`;
+  const guideBar = (role, links) => `<div class="guide-bar2"><div class="wrap gb-in">${roleSeg(role)}${links.length ? `<nav class="jump-nav" aria-label="On this page">${links.map(([h, l]) => `<a href="${h}">${esc(l)}</a>`).join("")}</nav>` : ""}</div></div>`;
+  // Same-page links: scroll without changing the route.
+  const wireJump = root => root.querySelectorAll(".jump-nav a").forEach(a => a.addEventListener("click", e => {
+    const el = document.getElementById(a.getAttribute("href").slice(1));
+    if (el) { e.preventDefault(); el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); el.focus?.({ preventScroll: true }); }
+  }));
 
   function pageDungeon(d, dNotes) {
     if (!d) { pageNotFound(); return; }
@@ -1123,19 +1197,25 @@
     document.title = `${n.name} · WoW Companion`;
     const draw = () => {
       const role = store.get("guideRole") || "all";
+      const jb = (b, i) => j?.encounters?.find(e => normOf(e.name) === normOf(b.name) || normOf(e.name).includes(normOf(b.name)) || normOf(b.name).includes(normOf(e.name))) || (j?.encounters?.length === n.bosses.length ? j.encounters[i] : null);
       main.innerHTML = `
-        ${pageHero({ kicker: `Mythic+ · ${esc(dNotes?.season || "")}`, title: esc(n.name), sub: esc(n.summary), extra: j?.image ? `<img class="hero-tile rise2" src="${esc(j.image)}" alt="" onerror="this.remove()">` : "" })}
-        <div class="wrap stack">
-          <div class="guide-bar"><a class="back" href="#/dungeons">← All dungeons</a>${roleSeg(role)}</div>
-          <div class="split">
-            ${n.mustKick?.length ? `<section class="panel" aria-labelledby="kick-h"><h2 id="kick-h">Must-kick casts</h2>
-              <table class="kick"><thead><tr><th>Mob</th><th>Cast</th><th>Why</th></tr></thead><tbody>${n.mustKick.map(k => `<tr><td>${esc(k.mob)}</td><td><strong>${esc(k.cast)}</strong></td><td>${esc(k.why)}</td></tr>`).join("")}</tbody></table></section>` : ""}
-            ${n.dangerousPacks?.length ? `<section class="panel" aria-labelledby="pack-h"><h2 id="pack-h">Dangerous trash</h2>${bullets(n.dangerousPacks)}${n.affixNotes?.length ? `<h3 class="sub-h">Affixes</h3>${bullets(n.affixNotes)}` : ""}</section>` : ""}
+        ${artHero({ img: j?.image, back: `<a class="back" href="#/dungeons">All Mythic+ dungeons</a>`, title: esc(n.name), sub: esc(n.summary),
+          chips: [`${n.bosses.length} bosses`, `${n.mustKick?.length || 0} must-kick casts`, esc(dNotes?.season || "")].filter(Boolean) })}
+        ${guideBar(role, [...(n.mustKick?.length ? [["#kicks", "Must-kicks"]] : []), ...(n.dangerousPacks?.length ? [["#trash", "Trash"]] : []), ...n.bosses.map((b, i) => [`#boss${i + 1}`, b.name])])}
+        <div class="wrap stack guide-stack">
+          <div class="guide-two">
+            ${n.mustKick?.length ? `<section id="kicks" tabindex="-1" aria-labelledby="kick-h"><h2 id="kick-h" class="big-h">Must-kick casts</h2>
+              <div class="kick-list">${n.mustKick.map(k => `<div class="kick-card"><div><strong>${esc(k.cast)}</strong><small>${esc(k.mob)}</small></div><p>${esc(k.why)}</p></div>`).join("")}</div></section>` : ""}
+            ${n.dangerousPacks?.length ? `<section id="trash" tabindex="-1" aria-labelledby="pack-h"><h2 id="pack-h" class="big-h">Dangerous trash</h2>
+              <ul class="trash-list">${n.dangerousPacks.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+              ${n.affixNotes?.length ? `<h3 class="sub-h2">Affixes</h3><ul class="trash-list">${n.affixNotes.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</section>` : ""}
           </div>
-          ${n.bosses.map((b, i) => { const jb = j?.encounters?.find(e => normOf(e.name) === normOf(b.name) || normOf(e.name).includes(normOf(b.name)) || normOf(b.name).includes(normOf(e.name))) || (j?.encounters?.length === n.bosses.length ? j.encounters[i] : null); return `
-            <section class="panel boss" aria-labelledby="b${i}"><h2 id="b${i}"><span class="boss-n">${i + 1}</span>${esc(b.name)}</h2>${bossBlock(b, jb, role)}</section>`; }).join("")}
+          ${n.bosses.map((b, i) => `
+            <section class="boss2" id="boss${i + 1}" tabindex="-1" aria-labelledby="b${i}"><span class="boss-num" aria-hidden="true">${i + 1}</span>
+              <div class="boss2-body"><h2 id="b${i}" class="big-h">${esc(b.name)}</h2>${bossBlock(b, jb(b, i), role)}</div></section>`).join("")}
           ${sourceList(n.sources, dNotes?.checked)}
         </div>`;
+      wireJump(main);
       wireRoleSeg(main, draw);
       fillSpellIcons(main);
     };
@@ -1152,10 +1232,10 @@
     const draw = () => {
       const role = store.get("guideRole") || "all";
       main.innerHTML = `
-        ${pageHero({ kicker: `${esc(raidName)} · Boss ${i + 1} of ${order.length}`, title: esc(nm), sub: esc(b.note?.summary || b.journal?.description || "") })}
-        <div class="wrap stack">
-          <div class="guide-bar"><a class="back" href="#/dungeons/raid">← All bosses</a>${roleSeg(role)}</div>
-          <section class="panel boss">${bossBlock(b.note, b.journal, role, { raid: true, openJournal: !b.note })}</section>
+        ${artHero({ img: rJ?.image, back: `<a class="back" href="#/dungeons/raid">${esc(raidName)}, all bosses</a>`, title: esc(nm), sub: esc(b.note?.summary || b.journal?.description || ""), chips: [`Boss ${i + 1} of ${order.length}`] })}
+        ${guideBar(role, [])}
+        <div class="wrap stack guide-stack">
+          <section class="boss2" aria-label="${esc(nm)}"><span class="boss-num" aria-hidden="true">${i + 1}</span><div class="boss2-body">${bossBlock(b.note, b.journal, role, { raid: true, noSum: true })}</div></section>
           <nav class="boss-nav" aria-label="Other bosses">${link(prev, `← ${esc(prev?.note?.name || prev?.journal?.name || "")}`)}${link(next, `${esc(next?.note?.name || next?.journal?.name || "")} →`)}</nav>
           ${sourceList(b.note?.sources, rNotes?.checked)}
         </div>`;
@@ -1170,9 +1250,10 @@
   async function pagePvp(which) {
     document.title = "PvP · WoW Companion";
     main.innerHTML = `
-      ${pageHero({ kicker: "Retail · US leaderboards", title: "PvP", sub: "Which specs are winning in rated PvP right now, from Blizzard's own leaderboards. Open a spec for its PvP talents and build." })}
+      ${pageHero({ title: "PvP", sub: "Which specs are winning in rated PvP right now, from Blizzard's own US leaderboards. Open a spec for its PvP talents and build.", extra: `<div class="seg pill-seg rise2" role="group" aria-label="Bracket" id="pvpSeg"></div>` })}
       <div class="wrap stack"><div id="pvpBody">${loading("Loading PvP tier lists…")}</div></div>`;
-    const tiers = await API.tiers();
+    const [tiers, cls] = await Promise.all([API.tiers(), API.classes().catch(() => null)]);
+    const icons = new Map((cls?.classes || []).map(c => [c.id, c.icon]));
     const body = document.getElementById("pvpBody");
     const pv = tiers?.pvp;
     if (!pv || !Object.keys(pv.brackets || {}).length) { body.innerHTML = `<section class="panel"><p>PvP tier lists haven't been built yet. They're created by the daily data job; check back after it runs.</p></section>`; return; }
@@ -1187,19 +1268,16 @@
     const roleBlock = roleKey => {
       const rows = br.roles?.[roleKey] || [];
       if (!rows.length || thin.includes(roleKey)) return "";
-      const role = D.ROLES[roleKey];
-      const groups = ["S", "A", "B", "C"].map(tier => ({ tier, specs: rows.filter(r => r.tier === tier) })).filter(g => g.specs.length);
-      return `<section class="panel tier-role">
-        <h2>${svgIcon(role.icon, role.color, 20, 2)} ${roleKey === "DAMAGE" ? "DPS" : role.label + "s"}</h2>
-        ${groups.map(g => `<div class="tier-row"><span class="tier-letter t-${g.tier}">${g.tier}</span><div class="tier-specs">${g.specs.map(r => `
-          <a class="tier-spec" href="#/spec/${r.spec}/pvp" style="--ic:${colorOf(r.classId)}"><span class="ts-name">${esc(r.name)} <span>${esc(r.className)}</span></span><span class="ts-val">${r.count}</span></a>`).join("")}</div></div>`).join("")}
+      return `<section class="tier-role2${roleKey === "DAMAGE" ? " wide" : ""}" aria-labelledby="pr-${roleKey}">
+        <h2 id="pr-${roleKey}" class="big-h">${roleTitle(roleKey)} <span>${rows.length} specs</span></h2>
+        ${tierBands(rows, { value: r => r.count, href: r => `#/spec/${r.spec}/pvp`, mine: store.get("mainSpec"), icons })}
       </section>`;
     };
+    document.getElementById("pvpSeg").innerHTML = avail.map(([k, l]) => `<a href="#/pvp/${k}" aria-pressed="${k === key}">${l}</a>`).join("");
     body.innerHTML = `
-      <div class="seg tier-seg" role="group" aria-label="Bracket">${avail.map(([k, l]) => `<a href="#/pvp/${k}" aria-pressed="${k === key}">${l}</a>`).join("")}</div>
       <p class="muted small">${note} Season ${pv.season}, updated ${new Date(pv.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}. Numbers are players, not win rates.</p>
       ${thin.length ? `<p class="muted small">${thin.map(r => (r === "DAMAGE" ? "DPS" : D.ROLES[r].label + "s")).join(" and ")} aren't shown for ${esc(br.label)}: fewer than 5 of any spec made the cut.${key !== "blitz" && pv.brackets.blitz ? ` See <a href="#/pvp/blitz">Blitz</a> for tanks.` : ""}</p>` : ""}
-      <div class="tier-grid">${["TANK", "HEALER", "DAMAGE"].map(roleBlock).join("")}</div>`;
+      <div class="tier-grid2">${["TANK", "HEALER", "DAMAGE"].map(roleBlock).join("")}</div>`;
   }
 
   /* ------------------------------ Search ------------------------------ */
@@ -1267,7 +1345,7 @@
 
   function pageComing(sec) {
     main.innerHTML = `
-      ${pageHero({ kicker: `Retail · Coming in phase ${sec.phase}`, title: esc(sec.label), sub: esc(sec.blurb) })}
+      ${pageHero({ kicker: `Coming in phase ${sec.phase}`, title: esc(sec.label), sub: esc(sec.blurb) })}
       <div class="wrap stack">
         <section class="panel locked-big">
           <div class="panel-ic big">${svgIcon("M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4", "#e6c46a", 34, 1.6)}</div>
@@ -1317,7 +1395,7 @@
       </button>`;
     }).join("");
     return `<div class="ct-tree" style="--ic:${col}">
-      <div class="ct-head"${tree.bg ? ` style="background-image:linear-gradient(rgba(10,12,18,.65),rgba(10,12,18,.92)),url('${esc(tree.bg)}')"` : ""}><strong>${esc(tree.name)}</strong><span>${spent}</span></div>
+      <div class="ct-head"${tree.bg ? ` style="background-image:linear-gradient(0deg,rgba(17,15,36,.95),rgba(17,15,36,.3)),url('${esc(tree.bg)}')"` : ""}><strong>${esc(tree.name)}</strong><span>${spent}</span></div>
       <div class="ct-grid" style="grid-template-rows:repeat(${rows}, 52px)">${cells}</div>
     </div>`;
   }
@@ -1357,13 +1435,12 @@
     const talentInfo = (await API.classicTalents(v))?.talents || null;
     if (!notes || !trees) { main.innerHTML = `<div class="wrap stack"><div class="errbox"><p>The Classic guides didn't load. Try again in a moment.</p></div></div>`; return; }
     const iconOf = key => cls?.classes?.find(c => c.id === CLASSIC_IDS[key])?.icon || "";
-    const seg = `<div class="seg" role="group" aria-label="Classic version">${Object.entries(CL_VERSIONS).map(([k, x]) => `<a href="#/classic/${k}${clsKey ? "/" + clsKey : ""}" aria-pressed="${k === v}">${x.label} <small>· ${x.cap}</small></a>`).join("")}</div>`;
+    const seg = `<div class="seg pill-seg cl-seg" role="group" aria-label="Classic version">${Object.entries(CL_VERSIONS).map(([k, x]) => `<a href="#/classic/${k}${clsKey ? "/" + clsKey : ""}" aria-pressed="${k === v}">${x.label} <small>· ${x.cap}</small></a>`).join("")}</div>`;
     if (clsKey) return pageClassicClass(v, V, notes, trees, talentInfo, clsKey, iconOf, seg);
 
-    main.innerHTML = `
-      ${pageHero({ kicker: `${V.label} · Level ${V.cap}`, title: esc(V.label), sub: v === "tbc" ? esc(notes.phase || "The Burning Crusade on the Anniversary realms.") : "The permanent 1.15 realms with every phase open: leveling builds, raid talent builds and pre-raid best in slot for all nine classes.", tint: "rgba(230,196,106,0.2)" })}
+    main.innerHTML = `<div class="classic-page">
+      ${pageHero({ kicker: `Level ${V.cap}`, extra: seg, title: esc(V.label), sub: v === "tbc" ? esc(notes.phase || "The Burning Crusade on the Anniversary realms.") : "The permanent 1.15 realms with every phase open: leveling builds, raid talent builds and pre-raid best in slot for all nine classes." })}
       <div class="wrap stack">
-        ${seg}
         <section aria-labelledby="cl-h"><div class="sec-head"><h2 id="cl-h">Pick a class</h2></div>
           <div class="class-grid">${notes.classes.map(c => { const k = c.class.toLowerCase(); return `
             <a class="class-tile lift" href="#/classic/${v}/${k}" style="--ic:${colorOf(CLASSIC_IDS[k])}">
@@ -1373,7 +1450,7 @@
         </section>
         ${notes.route?.length ? `<section class="panel" aria-labelledby="clr-h"><h2 id="clr-h">Leveling route${v === "tbc" ? " to 70" : " to 60"}</h2><ol class="route">${notes.route.map(r => `<li>${esc(r)}</li>`).join("")}</ol>${sourceList(notes.routeSources, notes.checked)}</section>` : ""}
         ${(notes.notes || []).map(n => `<p class="muted small">${esc(n)}</p>`).join("")}
-      </div>`;
+      </div></div>`;
   }
 
   function pageClassicClass(v, V, notes, allTrees, info, key, iconOf, seg) {
@@ -1386,38 +1463,40 @@
     const L = c.leveling;
     const startLevel = 10;
     main.innerHTML = `
-      <section class="hero spec-hero" style="--tint:${rgba(col, 0.28)};--ic:${col}">
-        ${moonArt(col)}
-        <div class="wrap hero-in">
-          ${iconFrame(iconOf(key), c.class[0], col, "xl")}
-          <div class="hero-text rise">
-            <a class="back" href="#/classic/${v}">← All ${esc(V.label)} classes</a>
-            <span class="kicker" style="color:${col}">${esc(V.label)} · Level ${V.cap}</span>
-            <h1>${esc(c.class)}</h1>
-            ${L.tip ? `<p class="hero-sub">${esc(L.tip)}</p>` : ""}
+      <div class="classic-page" style="--ic:${col}">
+      <section class="cl-hero">
+        <div class="wrap cl-hero-in">
+          <div class="cl-title rise">
+            ${iconFrame(iconOf(key), c.class[0], col, "xl")}
+            <div><a class="back" href="#/classic/${v}">All ${esc(V.label)} classes</a>
+              <p class="cl-ver">${esc(V.label)}, level ${V.cap}</p>
+              <h1>${esc(c.class)}</h1></div>
           </div>
+          ${seg}
         </div>
       </section>
-      <div class="wrap stack">
-        ${seg}
-        <section class="panel" aria-labelledby="cle-h">
-          <div class="build-top"><h2 id="cle-h">Endgame builds</h2>
-            <div class="seg" role="group" aria-label="Build">${c.endgame.map((e, i) => `<button type="button" data-b="${i}" aria-pressed="${i === pick}">${esc(cleanBuildName(e.name))}</button>`).join("")}</div></div>
+      <div class="wrap stack cl-stack">
+        <section aria-labelledby="cle-h" class="cl-sec">
+          <h2 id="cle-h" class="big-h">Endgame builds</h2>
+          <div class="build-pick" role="group" aria-label="Build">${c.endgame.map((e, i) => `<button type="button" data-b="${i}" aria-pressed="${i === pick}"><strong>${esc(cleanBuildName(e.name))}</strong><small>${esc({ tank: "Tank", healer: "Healer", dps: "Damage" }[e.role] || e.role || "")}${e.split || e.build?.split ? `, ${esc(e.split || e.build.split)}` : ""}</small></button>`).join("")}</div>
           <div id="egBody"></div>
         </section>
-        <section class="panel" aria-labelledby="cll-h">
-          <h2 id="cll-h">Leveling as ${esc(L.spec || "")}</h2>
+        <section aria-labelledby="cll-h" class="cl-sec">
+          <h2 id="cll-h" class="big-h">Leveling</h2>
+          <p class="cl-lead">Level as ${esc(L.spec || "")}${L.build?.split ? `, ${esc(L.build.split)}` : ""}.</p>
+          ${L.tip ? `<p class="cl-tip">${esc(L.tip)}</p>` : ""}
           ${L.keyAbilities?.length ? `<ul class="lv-abilities cols">${L.keyAbilities.map(k => `<li><span class="lv-ic">${esc(T.initials(k.name))}</span><span><strong>${esc(k.name)}</strong><small>${esc(k.why)}</small></span></li>`).join("")}</ul>` : ""}
-          ${L.order?.length ? `<h3 class="sub-h">Talent order</h3>${bullets(L.order)}` : ""}
-          ${L.build ? `<h3 class="sub-h">Leveling build at ${L.build.points >= (v === "tbc" ? 61 : 51) ? V.cap : `${L.build.points + 9}`} (${esc(L.build.split)})</h3>${buildPanel("lvTrees", "Leveling", trees, L.build, info, col, orderList(trees, L.build, info, startLevel))}
+          ${L.order?.length ? `<h3 class="sub-h2">Talent order</h3><ol class="cl-order">${L.order.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}
+          ${L.build ? `<h3 class="sub-h2">Leveling build at ${L.build.points >= (v === "tbc" ? 61 : 51) ? V.cap : `${L.build.points + 9}`} (${esc(L.build.split)})</h3>${buildPanel("lvTrees", "Leveling", trees, L.build, info, col, orderList(trees, L.build, info, startLevel))}
             <p class="muted small"><a href="${esc(L.build.link)}" target="_blank" rel="noopener">Open this build in ${L.build.kind === "wowhead" ? "Wowhead" : "Warcraft Tavern"}</a></p>` : `<p class="muted small">No leveling calculator link was found for this class, so the talent order above is the guide.</p>`}
         </section>
-        ${c.gear?.length ? `<section class="panel" aria-labelledby="clg-h">
-          <h2 id="clg-h">${v === "tbc" ? "Pre-raid and catch-up gear" : "Pre-raid best in slot"}</h2>
-          ${c.gear.length > 1 ? `<div class="seg gear-seg" role="group" aria-label="Spec">${c.gear.map((g, i) => `<button type="button" data-g="${i}" aria-pressed="${i === 0}">${esc(g.spec)}</button>`).join("")}</div>` : `<p class="muted small">${esc(c.gear[0].spec)}</p>`}
+        ${c.gear?.length ? `<section aria-labelledby="clg-h" class="cl-sec">
+          <h2 id="clg-h" class="big-h">${v === "tbc" ? "Pre-raid and catch-up gear" : "Pre-raid best in slot"}</h2>
+          ${c.gear.length > 1 ? `<div class="seg pill-seg gear-seg" role="group" aria-label="Spec">${c.gear.map((g, i) => `<button type="button" data-g="${i}" aria-pressed="${i === 0}">${esc(g.spec)}</button>`).join("")}</div>` : ""}
           <div id="gearBody"></div>
         </section>` : ""}
         ${sourceList(c.sources, notes.checked)}
+      </div>
       </div>`;
 
     const egBody = document.getElementById("egBody");
@@ -1425,7 +1504,7 @@
       const e = c.endgame[pick];
       main.querySelectorAll("[data-b]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.b === pick)));
       egBody.innerHTML = `
-        <p class="build-src"><span class="role-pill r-${esc(e.role)}">${esc({ tank: "Tank", healer: "Healer", dps: "DPS" }[e.role] || e.role)}</span>${e.split ? ` <strong>${esc(e.split)}</strong>` : ""} ${esc(e.notes || "")}</p>
+        ${e.notes ? `<p class="build-src">${esc(e.notes)}</p>` : ""}
         ${e.build ? buildPanel("egTrees", e.name, trees, e.build, info, col) + `<p class="muted small"><a href="${esc(e.build.link)}" target="_blank" rel="noopener">Open in ${e.build.kind === "wowhead" ? "Wowhead's talent calculator" : "Warcraft Tavern's talent calculator"}</a>${e.build.page && e.build.page.includes("wowsims") ? " · build from the wowsims simulator" : ""}</p>`
           : `<p class="muted small">No calculator link was found for this build, so only the point split and notes are shown.</p>`}`;
       if (e.build) { const dec = decodeBuild(trees, e.build); wireClassicTrees(egBody, trees, () => dec.pts, info, document.getElementById("egTreesTip")); }
@@ -1439,7 +1518,7 @@
       const drawGear = gi => {
         main.querySelectorAll("[data-g]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.g === gi)));
         const g = c.gear[gi];
-        gearBody.innerHTML = `${g.phase ? `<p class="muted small">${esc(g.phase)}</p>` : ""}<table class="kick cl-gear"><thead><tr><th>Slot</th><th>Item</th><th>Where</th></tr></thead><tbody>${g.items.map(it => `<tr><td>${esc(it.slot)}</td><td><a href="https://www.wowhead.com/${V.wh}/item=${encodeURIComponent(it.itemId)}" target="_blank" rel="noopener"><strong>${esc(it.name)}</strong></a></td><td>${esc(it.source || "")}</td></tr>`).join("")}</tbody></table>`;
+        gearBody.innerHTML = `${g.phase ? `<p class="muted small">${esc(g.phase)}</p>` : ""}${c.gear.length === 1 ? `<p class="muted small">${esc(g.spec)}</p>` : ""}<div class="cl-gear2">${g.items.map(it => `<div class="clg-row"><span class="clg-slot">${esc(it.slot)}</span><span class="clg-item"><a href="https://www.wowhead.com/${V.wh}/item=${encodeURIComponent(it.itemId)}" target="_blank" rel="noopener">${esc(it.name)}</a><small>${esc(it.source || "")}</small></span></div>`).join("")}</div>`;
       };
       main.querySelectorAll("[data-g]").forEach(b => b.addEventListener("click", () => drawGear(+b.dataset.g)));
       drawGear(0);
