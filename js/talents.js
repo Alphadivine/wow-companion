@@ -53,7 +53,7 @@ window.WOW_TALENTS = (() => {
     const build = opts.build || null;
     const pickOf = n => (build ? build.get(n.id) || (n.mergedIds || []).map(id => build.get(id)).find(Boolean) || null : null);
     const picks = nodes.map(pickOf);
-    const chosenIndex = (n, p) => { if (!p) return -1; const list = n.variants ? n.variants.flat() : n.choices; return Math.max(0, list.findIndex(c => c.spellId === p.spell)); };
+    const chosenIndex = (n, p) => { if (!p) return -1; const list = n.variants ? n.variants.flat() : n.choices; return Math.max(0, list.indexOf(matchChoice(list, p))); };
 
     const order = nodes.map((n, i) => i).sort((a, b) => pos[a].r - pos[b].r || pos[a].c - pos[b].c);
     const buttons = order.map(i => {
@@ -97,7 +97,7 @@ window.WOW_TALENTS = (() => {
     // Swap the letters for real spell icons once they arrive (choice nodes show both halves).
     if (opts.icons) {
       // A choice node in a build shows only the chosen option's icon.
-      const faceSpells = (n, p) => (p && (n.variants || n.choices.length > 1) ? [p.spell] : (n.variants ? n.variants[0] : n.choices).slice(0, 2).map(c => c.spellId)).filter(Boolean);
+      const faceSpells = (n, p) => (p && (n.variants || n.choices.length > 1) ? [(matchChoice(n.variants ? n.variants.flat() : n.choices, p) || {}).spellId || p.spell] : (n.variants ? n.variants[0] : n.choices).slice(0, 2).map(c => c.spellId)).filter(Boolean);
       const all = nodes.flatMap(n => (n.variants ? n.variants.flat() : n.choices).map(c => c.spellId)).filter(Boolean);
       opts.icons(all).then(map => {
         Object.assign(iconMap, map);
@@ -131,10 +131,16 @@ window.WOW_TALENTS = (() => {
     };
   }
 
+  // Logs sometimes name a choice by a different spell id than the tree does; fall back to the name.
+  function matchChoice(list, p) {
+    if (!p) return null;
+    return list.find(c => c.spellId === p.spell) || (p.name ? list.find(c => c.name === p.name) : null) || null;
+  }
+
   function details(n, pick, inBuild) {
     if (!n) return `<p class="muted">Hover over, tap or tab to a talent to read it.</p>`;
     const all = n.variants ? n.variants.flat() : n.choices;
-    const chosen = pick ? all.find(c => c.spellId === pick.spell) : null;
+    const chosen = matchChoice(all, pick);
     const buildNote = !inBuild ? "" : pick
       ? `<div class="tip-build in"><strong>In this build${chosen && all.length > 1 ? `: ${esc(chosen.name)}` : ""}${n.maxRank > 1 ? ` (rank ${pick.rank}/${n.maxRank})` : ""}</strong><span>${pick.granted ? "Granted free" : `Taken by ${pick.pct}% of top players`}</span></div>`
       : `<div class="tip-build out"><strong>Not in this build</strong><span>Fewer than half of top players take it</span></div>`;

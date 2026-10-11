@@ -6,6 +6,7 @@
 - Best-in-slot icons were blank for many new items: icons now come from Wowhead's icon server, and the page falls back to it for today's data
 - Tier list rows could show "Spec 250" if the class list didn't load: spec names are now saved in the tier data and the class list is retried
 - Raid tier scores are rescaled so the top spec in each role is 100% (DPS had no S tier because scores were averaged across bosses)
+- Choice talents in a build now always show their icon: when the logs name the chosen option by a different spell id than the tree (Balance's Incarnation showed as "IC"), it's matched by name
 
 ## 2026-10 — Phase 2: top builds and tier lists
 
