@@ -45,7 +45,7 @@ window.WOW_DATA = (() => {
     { id: "dungeons", label: "M+ & Raid", href: "#/dungeons", ready: true, phase: 4,
       blurb: "The current Mythic+ dungeon pool and raid bosses, with quick notes for interrupts, tanks, healers and everyone.",
       bullets: ["Must-kick casts and dangerous packs", "Tank and healer cooldown moments", "Specs that shine in each dungeon"] },
-    { id: "pvp", label: "PvP", href: "#/pvp", phase: 7,
+    { id: "pvp", label: "PvP", href: "#/pvp", ready: true, phase: 7,
       blurb: "Arena and battleground tier lists and the most-picked PvP talents, kept lighter than the PvE sections.",
       bullets: ["Solo Shuffle, 2v2, 3v3 and Battlegrounds", "PvP talent pick rates per spec"] }
   ];
@@ -57,7 +57,7 @@ window.WOW_DATA = (() => {
     { phase: 4, title: "Leveling & dungeons", text: "Leveling tips and boss notes", done: true },
     { phase: 5, title: "WoW Forever", text: "Zones, dungeons and leveling after launch" },
     { phase: 6, title: "Classic Era & TBC", text: "Talent builds, leveling and pre-raid gear", done: true },
-    { phase: 7, title: "PvP & polish", text: "PvP tier lists, search everywhere" }
+    { phase: 7, title: "PvP & search", text: "PvP tier lists and builds, search everywhere", done: true }
   ];
 
   // WoW Forever facts from Blizzard's BlizzCon 2026 announcement.

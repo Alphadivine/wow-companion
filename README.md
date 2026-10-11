@@ -4,6 +4,8 @@ A personal World of Warcraft guide that puts talent trees, builds, tier lists, g
 
 ## What works now
 
+- **PvP**: tier lists for Solo Shuffle, 3v3, 2v2 and Battleground Blitz from Blizzard's US leaderboards, and a PvP mode on every spec page with top players' talents, PvP talents and stats
+- **Search** (press `/` or the search button): specs, classes, every Retail talent (opens its tree with the talent highlighted), dungeons, raid bosses, boss abilities, Classic talents and your own characters
 - **Classic**: Classic Era (level 60) and TBC Anniversary (level 70) for all nine classes. Each class has endgame talent builds drawn on the class's three trees with points on every talent, a leveling build with its level-by-level point order where the source has one, key abilities and talent order notes, and pre-raid best in slot (TBC: pre-raid and catch-up gear) with Wowhead item links
 - **Leveling** for all 13 classes: the best spec to level and an alternative, key abilities, the one tip that matters, a leveling talent import string where a current one exists, and the fastest route to 90
 - **M+ & Raid**: every dungeon in this season's Mythic+ rotation and every boss in the current raid, with must-kick casts, dangerous trash, tank / healer / DPS / everyone notes, Heroic and Mythic changes and phases, plus the full ability breakdown from Blizzard's Adventure Guide. A role switch shows just your role's notes
@@ -23,7 +25,6 @@ A personal World of Warcraft guide that puts talent trees, builds, tier lists, g
 | Phase | What it adds |
 |---|---|
 | 5 | WoW Forever leveling, zones and dungeons after launch |
-| 7 | PvP builds and tier lists, search across the whole app |
 
 ## How the data works
 
@@ -34,6 +35,8 @@ Battle.net sign-in goes through the Worker too (`/auth/login` and `/auth/callbac
 Dungeon and raid ability details come from Blizzard's Adventure Guide, pulled by the same daily job into `data/guide/`. Blizzard's web API has no text or icons for boss spells, so each ability's description, cast time and icon come from Wowhead's public tooltip service. The hand-written leveling, dungeon and raid notes live in `notes/` (researched from Icy Veins, Method, Wowhead and Raider.IO, with sources listed on each page) and need a refresh each season.
 
 Classic tree layouts come from the wowsims Classic and TBC projects (`notes/trees-era.json`, `notes/trees-tbc.json`). Talent names, icons and descriptions come from Wowhead's Classic and TBC tooltips, fetched once by the data job into `data/classic/`. Classic Era builds are Warcraft Tavern and Wowhead calculator links from current guides; TBC raid builds are the wowsims simulator presets.
+
+PvP tier lists and builds also come from the daily job, using Blizzard's PvP leaderboards (US). The job writes `data/search.json` for the search box too.
 
 Builds and tier lists come from a GitHub Actions job (`.github/workflows/pages.yml` runs `scripts/build-data.mjs`) every morning. It reads Raider.IO, Warcraft Logs and Blizzard, writes `data/builds/{spec}.json`, `data/tiers.json` and `data/meta.json`, and publishes them with the site. Uploads publish right away and keep the current data.
 

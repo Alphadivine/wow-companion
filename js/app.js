@@ -164,7 +164,7 @@
     }
   }
 
-  async function pageSpec(id) {
+  async function pageSpec(id, findTalent) {
     main.innerHTML = `<div class="wrap">${loading("Loading talent trees…")}</div>`;
     let s;
     const extras = Promise.all([API.builds(id), API.tiers()]);
@@ -179,7 +179,8 @@
     const kindLabel = { class: "Class", hero: "Hero", spec: "Spec" };
     const modes = [
       buildFile?.mplus?.picks?.length ? { id: "mplus", label: "Mythic+", b: buildFile.mplus } : null,
-      buildFile?.raid?.picks?.length ? { id: "raid", label: "Raid", b: buildFile.raid } : null
+      buildFile?.raid?.picks?.length ? { id: "raid", label: "Raid", b: buildFile.raid } : null,
+      buildFile?.pvp?.picks?.length ? { id: "pvp", label: "PvP", b: buildFile.pvp } : null
     ].filter(Boolean);
     const saved = store.get("buildMode");
     let mode = modes.find(m => m.id === saved) || modes[0] || null;
@@ -214,7 +215,6 @@
             <div class="seg" role="group" aria-label="Build to show">
               ${modes.map(m => `<button type="button" data-mode="${m.id}">${m.label}</button>`).join("")}
               <button type="button" data-mode="none">Tree only</button>
-              <span class="seg-soon" title="Coming in phase 7">PvP soon</span>
             </div>
           </div>
           <div id="buildInfo"></div>
@@ -257,6 +257,8 @@
       const b = mode.b;
       const src = mode.id === "mplus"
         ? `${b.sample} top Mythic+ players this season${b.topKey ? `, keys up to +${b.topKey}` : ""}${b.source === "Warcraft Logs" ? " (from Warcraft Logs, since few top Raider.IO runs had this spec)" : ""}`
+        : mode.id === "pvp"
+        ? `${b.sample} top ${esc(b.bracket)} players on the US leaderboard${b.topRating ? `, rated up to ${b.topRating}` : ""}`
         : `${b.sample} top raid parses on ${(b.bosses || []).map(x => `${esc(x.name)} (${x.difficulty})`).join(", ")}`;
       const importBlock = b.importString
         ? `<div class="import">
@@ -264,7 +266,7 @@
             <input id="importStr" readonly value="${esc(b.importString)}">
             <button type="button" class="btn gold" id="copyBtn">Copy build</button>
           </div>
-          <p class="muted small">From ${esc(b.player.name)} (${esc(b.player.realm)}, ${esc(String(b.player.region).toUpperCase())})${b.player.differs ? `, whose loadout differs from the common build by ${b.player.differs} talent${b.player.differs === 1 ? "" : "s"}` : ", an exact match"}. In game: Talents → Import.</p>`
+          <p class="muted small">From ${esc(b.player.name)} (${esc(b.player.realm)}, ${esc(String(b.player.region).toUpperCase())}${b.player.rating ? `, ${b.player.rating} rating` : ""})${b.player.differs ? `, whose loadout differs from the common build by ${b.player.differs} talent${b.player.differs === 1 ? "" : "s"}` : ", an exact match"}. In game: Talents → Import.</p>`
         : `<p class="muted small">No top player's saved loadout matches this build closely enough to share an import string today, so the build is shown on the tree only.</p>`;
       buildInfo.innerHTML = `<p class="build-src">Based on ${src}. Updated ${new Date(b.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.</p>${importBlock}`;
       const copy = document.getElementById("copyBtn");
@@ -274,6 +276,7 @@
         copy.textContent = "Copied ✓"; setTimeout(() => { copy.textContent = "Copy build"; }, 2000);
       });
       extrasEl.innerHTML = buildExtras(b, col);
+      fillSpellIcons(extrasEl);
     };
 
     const show = i => {
@@ -334,11 +337,29 @@
     });
     search.addEventListener("input", runSearch);
     current = Math.max(0, trees.findIndex(t => t.kind === "spec"));
+    // Opened from search: show the tree that has the talent and highlight it.
+    const want = String(findTalent || "").toLowerCase();
+    const hit = want ? trees.findIndex(t => t.nodes.some(n => (n.variants ? n.variants.flat() : n.choices).some(c => c.name.toLowerCase() === want))) : -1;
+    if (hit >= 0) current = hit;
     applyMode();
+    if (hit >= 0) {
+      search.value = findTalent;
+      runSearch();
+      const el = host.querySelector(".tnode.match");
+      if (el) { el.scrollIntoView({ block: "center" }); el.focus({ preventScroll: true }); }
+    }
   }
 
   // Stat priority and best-in-slot panels for a build.
   function buildExtras(b, col) {
+    const pvpT = b.pvpTalents?.length ? `
+      <section class="panel" aria-labelledby="pvpt-h">
+        <h2 id="pvpt-h">PvP talents</h2>
+        <p class="muted small">How many of the same top players run each PvP talent. You pick three in game.</p>
+        <ol class="stat-list pvp-talents">${b.pvpTalents.map((x, i) => `
+          <li><span class="stat-rank${i < 3 ? "" : " dim"}">${i + 1}</span><span class="stat-body"><span class="stat-row"><strong><span class="pvp-ic" data-spell="${x.spell || ""}"></span>${esc(x.name)}</strong><span>${x.pct}%</span></span>
+          <span class="stat-bar"><span style="width:${Math.min(100, x.pct)}%;background:${col}"></span></span></span></li>`).join("")}</ol>
+      </section>` : "";
     const stats = b.stats?.length ? `
       <section class="panel" aria-labelledby="stat-h">
         <h2 id="stat-h">Stat priority</h2>
@@ -359,7 +380,7 @@
                 <small>${it.ilvl ? `ilvl ${it.ilvl} · ` : ""}${it.pct}% use it${it.enchant ? ` · ${esc(it.enchant)}` : ""}${it.gems?.length ? ` · ${it.gems.map(esc).join(", ")}` : ""}</small></span>
             </div>`).join("")}</div>`).join("")}</div>
       </section>` : "";
-    return stats || gear ? `<div class="split extras">${stats}${gear}</div>` : "";
+    return pvpT || stats || gear ? `<div class="split extras">${pvpT}${stats}${gear}</div>` : "";
   }
 
   async function pageTiers(which) {
@@ -929,6 +950,103 @@
     draw();
   }
 
+  /* ------------------------------ PvP ------------------------------ */
+  const PVP_BRACKETS = [["shuffle", "Solo Shuffle"], ["3v3", "3v3 Arena"], ["2v2", "2v2 Arena"], ["blitz", "Blitz"]];
+  async function pagePvp(which) {
+    document.title = "PvP · WoW Companion";
+    main.innerHTML = `
+      ${pageHero({ kicker: "Retail · US leaderboards", title: "PvP", sub: "Which specs are winning in rated PvP right now, from Blizzard's own leaderboards. Open a spec for its PvP talents and build." })}
+      <div class="wrap stack"><div id="pvpBody">${loading("Loading PvP tier lists…")}</div></div>`;
+    const tiers = await API.tiers();
+    const body = document.getElementById("pvpBody");
+    const pv = tiers?.pvp;
+    if (!pv || !Object.keys(pv.brackets || {}).length) { body.innerHTML = `<section class="panel"><p>PvP tier lists haven't been built yet. They're created by the daily data job; check back after it runs.</p></section>`; return; }
+    const avail = PVP_BRACKETS.filter(([k]) => pv.brackets[k]);
+    const key = avail.find(([k]) => k === which)?.[0] || avail[0][0];
+    const br = pv.brackets[key];
+    const note = key === "shuffle" || key === "blitz"
+      ? `Players of each spec rated ${br.cutoff} or higher, the rating of the ${br.players.toLocaleString()}th best player across every spec's ${esc(br.label)} ladder.`
+      : `Current specs of the top ${br.players} players on the ${esc(br.label)} ladder (rated ${br.cutoff}+). Their spec today may not be the one they climbed with.`;
+    const roleBlock = roleKey => {
+      const rows = br.roles?.[roleKey] || [];
+      if (!rows.length) return "";
+      const role = D.ROLES[roleKey];
+      const groups = ["S", "A", "B", "C"].map(tier => ({ tier, specs: rows.filter(r => r.tier === tier) })).filter(g => g.specs.length);
+      return `<section class="panel tier-role">
+        <h2>${svgIcon(role.icon, role.color, 20, 2)} ${roleKey === "DAMAGE" ? "DPS" : role.label + "s"}</h2>
+        ${groups.map(g => `<div class="tier-row"><span class="tier-letter t-${g.tier}">${g.tier}</span><div class="tier-specs">${g.specs.map(r => `
+          <a class="tier-spec" href="#/spec/${r.spec}/pvp" style="--ic:${colorOf(r.classId)}"><span class="ts-name">${esc(r.name)} <span>${esc(r.className)}</span></span><span class="ts-val">${r.count}</span></a>`).join("")}</div></div>`).join("")}
+      </section>`;
+    };
+    body.innerHTML = `
+      <div class="seg tier-seg" role="group" aria-label="Bracket">${avail.map(([k, l]) => `<a href="#/pvp/${k}" aria-pressed="${k === key}">${l}</a>`).join("")}</div>
+      <p class="muted small">${note} Season ${pv.season}, updated ${new Date(pv.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}. Numbers are players, not win rates.</p>
+      <div class="tier-grid">${["TANK", "HEALER", "DAMAGE"].map(roleBlock).join("")}</div>`;
+  }
+
+  /* ------------------------------ Search ------------------------------ */
+  const SEARCH_KIND = { spec: "Spec", class: "Class", talent: "Talent", classic: "Classic talent", dungeon: "Dungeon", raid: "Raid", boss: "Boss", ability: "Ability", character: "Character", page: "Page" };
+  const searchUi = (() => {
+    const overlay = document.getElementById("searchOverlay"), input = document.getElementById("searchInput"), list = document.getElementById("searchResults");
+    let items = null, results = [], sel = 0, lastFocus = null;
+    const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/['’]/g, "");
+    async function load() {
+      if (items) return items;
+      const pages = D.SECTIONS.filter(x => x.ready).map(x => ({ t: "page", n: x.label, sub: "Section", h: x.href }))
+        .concat([{ t: "page", n: "Classic Era", sub: "Classic", h: "#/classic/era" }, { t: "page", n: "TBC Anniversary", sub: "Classic", h: "#/classic/tbc" }, { t: "page", n: "WoW Forever", sub: "Forever", h: "#/forever" }]);
+      const chars = (store.get("characters")?.list || []).map(c => ({ t: "character", n: c.name, sub: `Level ${c.level} ${c.className} · ${c.realm}`, h: charHref(c) }));
+      const idx = await API.search();
+      items = [...pages, ...chars, ...(idx?.items || [])].map(x => ({ ...x, k: norm(x.n), ks: norm(x.sub) }));
+      return items;
+    }
+    const rank = { page: 0, character: 1, spec: 2, class: 2, dungeon: 3, raid: 3, boss: 4, talent: 5, ability: 6, classic: 7 };
+    function find(q) {
+      const words = norm(q).split(/\s+/).filter(Boolean);
+      if (!words.length) return [];
+      const out = [];
+      for (const x of items) {
+        if (!words.every(w => x.k.includes(w) || x.ks.includes(w))) continue;
+        const score = (x.k === words.join(" ") ? 0 : x.k.startsWith(words[0]) ? 1 : 2) * 10 + (rank[x.t] ?? 9);
+        out.push({ x, score });
+      }
+      return out.sort((a, b) => a.score - b.score || a.x.n.localeCompare(b.x.n)).slice(0, 40).map(o => o.x);
+    }
+    function draw() {
+      list.innerHTML = results.length ? results.map((r, i) => `<li role="option" id="sr${i}" aria-selected="${i === sel}" data-i="${i}"><a href="${esc(r.h)}"><span class="sr-kind k-${r.t}">${SEARCH_KIND[r.t] || r.t}</span><span class="sr-txt"><strong>${esc(r.n)}</strong><small>${esc(r.sub || "")}</small></span></a></li>`).join("")
+        : input.value.trim() ? `<li class="sr-empty">No matches for “${esc(input.value.trim())}”.</li>` : `<li class="sr-empty">Try “Balance”, “Starfall”, “Nalorakk” or one of your characters.</li>`;
+      input.setAttribute("aria-activedescendant", results.length ? `sr${sel}` : "");
+      list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    }
+    async function open() {
+      lastFocus = document.activeElement;
+      overlay.hidden = false; document.body.classList.add("no-scroll");
+      input.value = ""; results = []; sel = 0;
+      list.innerHTML = `<li class="sr-empty">Loading…</li>`;
+      input.focus();
+      await load();
+      results = find(input.value); sel = 0; // anything typed while the index was loading
+      draw();
+    }
+    function close() { overlay.hidden = true; document.body.classList.remove("no-scroll"); lastFocus?.focus?.(); }
+    function go(i) { const r = results[i]; if (!r) return; close(); if (location.hash === r.h) route(); else location.hash = r.h; }
+    input.addEventListener("input", () => { if (!items) return; results = find(input.value); sel = 0; draw(); });
+    input.addEventListener("keydown", e => {
+      if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(results.length - 1, sel + 1); draw(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(0, sel - 1); draw(); }
+      else if (e.key === "Enter") { e.preventDefault(); go(sel); }
+      else if (e.key === "Escape") close();
+    });
+    list.addEventListener("click", e => { const li = e.target.closest("[data-i]"); if (li) { e.preventDefault(); go(+li.dataset.i); } });
+    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    document.getElementById("searchClose").addEventListener("click", close);
+    document.getElementById("searchBtn").addEventListener("click", open);
+    document.addEventListener("keydown", e => {
+      if (e.key === "/" && overlay.hidden && !/input|textarea|select/i.test(document.activeElement?.tagName || "")) { e.preventDefault(); open(); }
+      else if (e.key === "Escape" && !overlay.hidden) close();
+    });
+    return { open, close };
+  })();
+
   function pageComing(sec) {
     main.innerHTML = `
       ${pageHero({ kicker: `Retail · Coming in phase ${sec.phase}`, title: esc(sec.label), sub: esc(sec.blurb) })}
@@ -1153,7 +1271,12 @@
     let version = "retail", section = "home";
     if (!a) pageHome();
     else if (a === "specs") { section = "specs"; pageSpecs(/^\d+$/.test(b || "") ? b : null); }
-    else if (a === "spec" && /^\d+$/.test(b || "")) { section = "specs"; pageSpec(b); }
+    else if (a === "spec" && /^\d+$/.test(b || "")) {
+      section = "specs";
+      if (parts[2] === "pvp") store.set("buildMode", "pvp");
+      pageSpec(b, parts[2] === "t" && parts[3] ? decodeURIComponent(parts[3]) : null);
+    }
+    else if (a === "pvp") { section = "pvp"; pagePvp(b); }
     else if (a === "tiers") { section = "tiers"; pageTiers(b); }
     else if (a === "leveling") { section = "leveling"; pageLeveling(/^\d+$/.test(b || "") ? b : null); }
     else if (a === "dungeons") { section = "dungeons"; pageGuides(b, parts[2]); }

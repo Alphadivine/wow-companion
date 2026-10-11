@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10 — Phase 7: PvP and search
+
+- New **PvP** page: tier lists for Solo Shuffle, 3v3, 2v2 and Battleground Blitz from Blizzard's US leaderboards. Shuffle and Blitz count each spec's players above a shared rating cutoff; 2v2 and 3v3 use the current specs of the top 300 players
+- **PvP mode** on spec pages (replacing "PvP soon"): the talents and hero tree most top Solo Shuffle players run (Blitz or arena for tanks), their PvP talent picks, secondary stats, and an import string when a top player's loadout is a near match
+- **Search** in the header (or press `/`): specs, classes, every Retail talent (opens the right tree with the talent highlighted), dungeons, raid bosses, boss abilities, Classic talents and your characters, with keyboard navigation
+- The data job adds PvP leaderboards, PvP builds and a search index
+
 ## 2026-10 — Phase 6: Classic Era and TBC Anniversary
 
 - New **Classic** section with a switch between Classic Era (level 60) and TBC Anniversary (level 70, Phase 3)

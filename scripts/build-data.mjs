@@ -28,7 +28,10 @@ const BNET_OAUTH = env.BNET_OAUTH || "https://oauth.battle.net/token";
 const BNET_API = env.BNET_API || "https://{region}.api.blizzard.com";
 
 const RUN_PAGES = 25;              // 20 runs a page -> top 500 Mythic+ runs
-const MPLUS_PROFILES = 10;         // player loadouts read per spec for Mythic+
+const MPLUS_PROFILES = 10;
+const PVP_PROFILES = 12;           // top Solo Shuffle / Blitz players whose talents are read per spec
+const PVP_ARENA_TOP = 300;         // top 2v2 and 3v3 players whose current spec is looked up
+const PVP_CUTOFF_RANK = 2000;      // Shuffle/Blitz tier lists count players above the 2000th best rating overall         // player loadouts read per spec for Mythic+
 const RAID_TOP = 50;               // top players per boss used for raid builds
 const RAID_PROFILES = 8;           // top raid players whose loadouts are checked for an import string
 const STAT_PROFILES = 5;           // players whose Blizzard stats and gear are read per build
@@ -134,7 +137,7 @@ async function loadSpecs() {
     for (const s of c.specializations || []) specs.push({ id: s.id, name: s.name.en_US || s.name, classId: c.id, className: c.name.en_US || c.name });
   }
   const details = await pool(specs, 6, s => bnet("us", `/data/wow/playable-specialization/${s.id}?${ns}`));
-  details.forEach((d, i) => { specs[i].role = d?.role?.type || "DAMAGE"; });
+  details.forEach((d, i) => { specs[i].role = d?.role?.type || "DAMAGE"; specs[i].treeHref = d?.spec_talent_tree?.key?.href || ""; });
   return specs;
 }
 
@@ -661,6 +664,160 @@ async function writeGuide(tiers) {
   } catch (e) { log("guide failed:", e.message); }
 }
 
+/* --------------------------------------------- PvP --------------------------------------------- */
+// Blizzard's own PvP leaderboards (US). Solo Shuffle and Battleground Blitz are ranked per spec, so the tier
+// lists count how many players of each spec are above a shared rating cutoff. 2v2 and 3v3 leaderboards
+// don't say which spec someone played, so the top players' current specs are looked up instead.
+
+const slugPart = s => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
+const dyn = path => bnet("us", `${path}${path.includes("?") ? "&" : "?"}namespace=dynamic-us&locale=en_US`);
+const prof = path => bnet("us", `${path}${path.includes("?") ? "&" : "?"}namespace=profile-us&locale=en_US`);
+
+// A Blizzard specializations loadout as nodeId -> pick (points split across entries are added up).
+function blizzardPicks(loadout) {
+  const picks = new Map();
+  const hero = loadout?.selected_hero_talent_tree?.id || 0;
+  for (const [k, list] of Object.entries(loadout || {})) {
+    if (!/^selected_.*talents$/.test(k) || !Array.isArray(list)) continue;
+    for (const t of list) {
+      if (!t?.id) continue;
+      const entry = t.tooltip?.talent?.id || 0, spell = t.tooltip?.spell_tooltip?.spell?.id || null;
+      const name = t.tooltip?.talent?.name?.en_US || t.tooltip?.talent?.name || t.tooltip?.spell_tooltip?.spell?.name?.en_US || t.tooltip?.spell_tooltip?.spell?.name || "";
+      const had = picks.get(t.id);
+      if (had && had.name === name) { had.rank += t.rank || 1; continue; }
+      picks.set(t.id, { node: t.id, entry, spell, name: typeof name === "string" ? name : "", rank: t.rank || 1, granted: false, subTree: /hero/.test(k) ? hero : 0 });
+    }
+  }
+  return picks;
+}
+
+function bracketTiers(specs, counts, label) {
+  const roles = {};
+  for (const role of ["TANK", "HEALER", "DAMAGE"]) {
+    const list = specs.filter(s => s.role === role && counts.has(s.id)).map(s => ({ spec: s.id, name: s.name, className: s.className, classId: s.classId, count: counts.get(s.id) || 0 }));
+    if (!list.length) continue;
+    const top = Math.max(...list.map(x => x.count), 1);
+    const total = list.reduce((a, x) => a + x.count, 0) || 1;
+    roles[role] = list.map(x => ({ ...x, share: Math.round((x.count / total) * 1000) / 10, tier: x.count / top >= 0.6 ? "S" : x.count / top >= 0.3 ? "A" : x.count / top >= 0.12 ? "B" : "C" })).sort((a, b) => b.count - a.count);
+  }
+  return { label, roles };
+}
+
+async function pvpData(specs, names) {
+  const seasons = await dyn("/data/wow/pvp-season/index");
+  const season = seasons.current_season?.id;
+  if (!season) throw new Error("no current PvP season");
+  const index = await dyn(`/data/wow/pvp-season/${season}/pvp-leaderboard/index`);
+  const boards = (index.leaderboards || []).map(l => l.name || l.key?.href?.match(/pvp-leaderboard\/([^?]+)/)?.[1]).filter(Boolean);
+  const specBoard = (prefix, s) => boards.find(b => b === `${prefix}-${slugPart(s.className)}-${slugPart(s.name)}`);
+  const out = { season, updated: new Date().toISOString(), brackets: {} };
+  const top = new Map(); // spec id -> top players for builds
+
+  for (const [key, prefix, label] of [["shuffle", "shuffle", "Solo Shuffle"], ["blitz", "blitz", "Battleground Blitz"]]) {
+    const lists = await pool(specs, 6, async s => {
+      const b = specBoard(prefix, s);
+      if (!b) return null;
+      const lb = await dyn(`/data/wow/pvp-season/${season}/pvp-leaderboard/${b}`);
+      return { s, entries: (lb.entries || []).map(e => ({ name: e.character?.name, realmSlug: e.character?.realm?.slug, rating: e.rating || 0 })).filter(e => e.name && e.realmSlug) };
+    });
+    const ok = lists.filter(x => x && !x.__error);
+    if (!ok.length) { log(`pvp: no ${label} leaderboards`); continue; }
+    const ratings = ok.flatMap(x => x.entries.map(e => e.rating)).sort((a, b) => b - a);
+    const cutoff = ratings[Math.min(PVP_CUTOFF_RANK, ratings.length) - 1] || 0;
+    const counts = new Map(ok.map(x => [x.s.id, x.entries.filter(e => e.rating >= cutoff).length]));
+    out.brackets[key] = { ...bracketTiers(specs, counts, label), cutoff, players: ratings.filter(r => r >= cutoff).length };
+    for (const x of ok) if (!top.has(x.s.id) || key === "shuffle") top.set(x.s.id, { bracket: label, entries: x.entries.slice(0, PVP_PROFILES * 2) });
+  }
+
+  for (const [key, label] of [["3v3", "3v3 Arena"], ["2v2", "2v2 Arena"]]) {
+    if (!boards.includes(key)) continue;
+    const lb = await dyn(`/data/wow/pvp-season/${season}/pvp-leaderboard/${key}`);
+    const entries = (lb.entries || []).slice(0, PVP_ARENA_TOP).filter(e => e.character?.name && e.character?.realm?.slug);
+    const found = await pool(entries, 6, async e => (await prof(`/profile/wow/character/${e.character.realm.slug}/${encodeURIComponent(e.character.name.toLowerCase())}`))?.active_spec?.id);
+    const counts = new Map(specs.map(s => [s.id, 0]));
+    let known = 0;
+    for (const id of found) if (typeof id === "number" && counts.has(id)) { counts.set(id, counts.get(id) + 1); known++; }
+    out.brackets[key] = { ...bracketTiers(specs, counts, label), players: known, cutoff: entries[entries.length - 1]?.rating || 0 };
+    // Tanks aren't in Solo Shuffle; fall back to arena players for their builds.
+    entries.forEach((e, i) => { const id = found[i]; if (typeof id === "number" && !top.has(id)) top.set(id, { bracket: label, entries: [] }); if (typeof id === "number" && top.get(id).bracket === label) top.get(id).entries.push({ name: e.character.name, realmSlug: e.character.realm.slug, rating: e.rating }); });
+  }
+
+  // Builds: the most common talents and PvP talents among each spec's top players.
+  const builds = new Map();
+  await pool(specs, 3, async s => {
+    const t = top.get(s.id);
+    if (!t?.entries.length) return;
+    const players = (await pool(t.entries.slice(0, PVP_PROFILES * 2), 4, async e => {
+      const sp = await prof(`/profile/wow/character/${e.realmSlug}/${encodeURIComponent(e.name.toLowerCase())}/specializations`);
+      const entry = (sp.specializations || []).find(x => x.specialization?.id === s.id);
+      const loadout = (entry?.loadouts || []).find(l => l.is_active) || entry?.loadouts?.[0];
+      if (!loadout || sp.active_specialization?.id !== s.id) return null;
+      const pvp = (entry.pvp_talent_slots || []).map(x => x.selected?.talent?.name?.en_US || x.selected?.talent?.name || x.selected?.spell_tooltip?.spell?.name).filter(n => typeof n === "string");
+      const pvpSpells = Object.fromEntries((entry.pvp_talent_slots || []).map(x => [x.selected?.talent?.name?.en_US || x.selected?.talent?.name, x.selected?.spell_tooltip?.spell?.id]).filter(([n, id]) => typeof n === "string" && id));
+      return { e, picks: blizzardPicks(loadout), code: loadout.talent_loadout_code || null, pvp, pvpSpells };
+    })).filter(x => x && !x.__error).slice(0, PVP_PROFILES);
+    if (players.length < 3) return;
+    const build = majorityBuild(players.map(x => x.picks));
+    const ranked = players.map(x => ({ ...x, d: distance(x.picks, build) })).sort((a, b) => a.d - b.d);
+    const counts = {}, spells = {};
+    for (const x of players) for (const n of x.pvp) { counts[n] = (counts[n] || 0) + 1; if (x.pvpSpells[n]) spells[n] = x.pvpSpells[n]; }
+    const chars = await readCharacters(ranked.slice(0, STAT_PROFILES).map(x => ({ name: x.e.name, realmSlug: x.e.realmSlug, region: "us" })), names);
+    builds.set(s.id, {
+      sample: players.length, bracket: t.bracket, topRating: Math.max(...players.map(x => x.e.rating || 0)),
+      picks: pickList(build),
+      pvpTalents: Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, n]) => ({ name, spell: spells[name] || null, pct: Math.round((n / players.length) * 100) })),
+      player: { name: ranked[0].e.name, realm: ranked[0].e.realmSlug, region: "us", differs: ranked[0].d, rating: ranked[0].e.rating },
+      importString: ranked[0].d <= NEAR_MATCH ? ranked[0].code : null,
+      stats: averageStats(chars.map(c => c.stats)),
+      source: "Blizzard PvP leaderboards", updated: new Date().toISOString()
+    });
+  });
+  log(`pvp: season ${season}, brackets ${Object.keys(out.brackets).join(", ")}, builds for ${builds.size}/${specs.length} specs`);
+  return { tiers: out, builds };
+}
+
+/* ------------------------------------------- search ------------------------------------------- */
+// One small index the site's search box reads: specs, every Retail talent, dungeons, bosses, boss
+// abilities and Classic talents, each with the page it opens.
+async function writeSearch(specs) {
+  const items = [];
+  const add = (t, n, sub, h) => { if (n && h) items.push({ t, n, sub, h }); };
+  const classes = new Map();
+  for (const s of specs) { classes.set(s.classId, s.className); add("spec", `${s.name} ${s.className}`, "Specialization", `#/spec/${s.id}`); }
+  for (const [id, n] of classes) add("class", n, "Class", `#/specs/${id}`);
+  const seen = new Set();
+  await pool(specs.filter(s => s.treeHref), 6, async s => {
+    const u = new URL(s.treeHref);
+    const tree = await bnet("us", `${u.pathname}?namespace=${u.searchParams.get("namespace") || "static-us"}&locale=en_US`);
+    const heroForSpec = (tree.hero_talent_trees || []).filter(h => !(h.playable_specializations || []).length || h.playable_specializations.some(p => p.id === s.id));
+    const groups = [["class", tree.class_talent_nodes, `${s.className} class talent`], ["spec", tree.spec_talent_nodes, `${s.name} ${s.className}`], ...heroForSpec.map(h => ["hero", h.hero_talent_nodes, `${name(h.name)} hero talent · ${s.name} ${s.className}`])];
+    for (const [kind, nodes, sub] of groups) for (const n of nodes || []) for (const r of (n.ranks || []).slice(0, 1)) for (const tip of r.choice_of_tooltips || [r.tooltip]) {
+      const nm = name(tip?.talent?.name) || name(tip?.spell_tooltip?.spell?.name);
+      const key = kind === "class" ? `${s.classId}|${nm}` : `${s.id}|${nm}`;
+      if (!nm || seen.has(key)) continue;
+      seen.add(key);
+      add("talent", nm, sub, `#/spec/${s.id}/t/${encodeURIComponent(nm)}`);
+    }
+  });
+  const slug = s => String(s || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const guide = async f => fs.readFile(path.join(OUT, f), "utf8").then(JSON.parse).catch(() => null);
+  const raid = await guide("guide/raid.json"), dungeons = await guide("guide/dungeons.json");
+  const abilities = (enc, sub, h) => { const walk = l => { for (const x of l || []) { if (x.spell) add("ability", x.title, sub, h); walk(x.sections); } }; walk(enc.sections); };
+  if (raid) { add("raid", raid.name, "Raid", "#/dungeons/raid"); for (const e of raid.encounters) { add("boss", e.name, raid.name, `#/dungeons/raid/${slug(e.name)}`); abilities(e, `${e.name} · ${raid.name}`, `#/dungeons/raid/${slug(e.name)}`); } }
+  for (const d of dungeons?.instances || []) { const h = `#/dungeons/d/${slug(d.seasonName)}`; add("dungeon", d.seasonName, "Mythic+ dungeon", h); for (const e of d.encounters) { add("boss", e.name, d.seasonName, h); abilities(e, `${e.name} · ${d.seasonName}`, h); } }
+  for (const v of ["era", "tbc"]) {
+    const trees = await fs.readFile(path.join(env.NOTES_DIR || "notes", `trees-${v}.json`), "utf8").then(JSON.parse).catch(() => null);
+    const info = await guide(`classic/talents-${v}.json`);
+    for (const [cls, list] of Object.entries(trees || {})) for (const tr of list) for (const t of tr.talents) {
+      const nm = info?.talents?.[t.ids[0]]?.name || t.guess;
+      add("classic", nm, `${tr.name} · ${cls[0].toUpperCase() + cls.slice(1)} · ${v === "tbc" ? "TBC Anniversary" : "Classic Era"}`, `#/classic/${v}/${cls}`);
+    }
+  }
+  const uniq = [...new Map(items.map(i => [`${i.t}|${i.n}|${i.sub}|${i.h}`, i])).values()];
+  await writeJson("search.json", { updated: new Date().toISOString(), items: uniq });
+  log(`search: ${uniq.length} entries`);
+}
+
 /* --------------------------------- Classic Era and TBC talents --------------------------------- */
 // The Classic section's tree layouts ship with the site (notes/trees-era.json and trees-tbc.json, from the
 // wowsims projects). Talent names, icons and descriptions come from Wowhead's Classic and TBC tooltips.
@@ -711,6 +868,10 @@ async function main() {
       await writeGuide(liveTiers);
     }
     await writeClassic();
+    if (!(prevMeta.files || []).includes("search.json") && env.BLIZZARD_CLIENT_ID) {
+      try { if (!bnetToken) bnetToken = await oauthToken(BNET_OAUTH, env.BLIZZARD_CLIENT_ID, env.BLIZZARD_CLIENT_SECRET); await writeSearch(await loadSpecs()); }
+      catch (e) { log("search failed:", e.message); }
+    }
     await writeJson("meta.json", { ...prevMeta, files: await listFiles() });
     log("REFRESH=false: kept the live data");
     return;
@@ -786,11 +947,23 @@ async function main() {
     } catch (e) { log("Mythic+ fallback failed:", e.message); }
   }
 
+  // PvP
+  try {
+    const pv = await pvpData(specs, names);
+    tiers.pvp = pv.tiers;
+    for (const s of specs) {
+      const b = pv.builds.get(s.id);
+      if (b) builds.get(s.id).pvp = b;
+      status[s.id] = { ...(status[s.id] || {}), pvp: b ? "ok" : "too few players" };
+    }
+  } catch (e) { log("pvp failed:", e.message); }
+
   // Gear lists are made last so every enchant and gem name learned along the way can be used.
   for (const b of pendingGear) if (typeof b.gear === "function") b.gear = b.gear();
 
   await writeGuide(tiers);
   await writeClassic();
+  try { await writeSearch(specs); } catch (e) { log("search failed:", e.message); }
 
   for (const s of specs) await writeJson(`builds/${s.id}.json`, { spec: s.id, name: s.name, className: s.className, role: s.role, ...builds.get(s.id) });
   await writeJson("tiers.json", tiers);
