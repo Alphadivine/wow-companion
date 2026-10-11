@@ -80,7 +80,7 @@
       ${pageHero({
         kicker: "Retail · Midnight",
         title: "Everything for your next session",
-        sub: "Pick a class and spec to read its full talent tree. Builds, tier lists and your own characters arrive in the next phases.",
+        sub: "Pick a class and spec to see the build top players run, with an import string, stat priority and best in slot. Your own characters arrive next.",
         art: moonArt("#FF7C0A"),
         extra: last ? `<a class="jump rise2" href="#/spec/${last.id}" style="--ic:${colorOf(last.classId)}">
             ${iconFrame(last.icon, last.name[0], colorOf(last.classId), "sm")}
@@ -166,15 +166,26 @@
   async function pageSpec(id) {
     main.innerHTML = `<div class="wrap">${loading("Loading talent trees…")}</div>`;
     let s;
+    const extras = Promise.all([API.builds(id), API.tiers()]);
     try { s = await API.spec(id); } catch (err) { main.innerHTML = `<div class="wrap stack">${errorBox(err, () => pageSpec(id))}</div>`; return; }
+    const [buildFile, tiers] = await extras;
     const col = colorOf(s.class.id);
     const role = D.ROLES[s.role] || D.ROLES.DAMAGE;
     store.set("lastSpec", { id: s.id, name: s.name, className: s.class.name, classId: s.class.id, icon: s.icon });
     document.title = `${s.name} ${s.class.name} · WoW Companion`;
 
     const trees = s.trees || [];
-    const defaultTree = Math.max(0, trees.findIndex(t => t.kind === "spec"));
     const kindLabel = { class: "Class", hero: "Hero", spec: "Spec" };
+    const modes = [
+      buildFile?.mplus?.picks?.length ? { id: "mplus", label: "Mythic+", b: buildFile.mplus } : null,
+      buildFile?.raid?.picks?.length ? { id: "raid", label: "Raid", b: buildFile.raid } : null
+    ].filter(Boolean);
+    const saved = store.get("buildMode");
+    let mode = modes.find(m => m.id === saved) || modes[0] || null;
+    const tierBadge = (key, label) => {
+      const row = tiers?.[key]?.roles?.[s.role]?.find(r => r.spec === s.id);
+      return row && row.tier !== "?" ? `<a class="tier-badge t-${row.tier}" href="#/tiers/${key}">${label} tier <strong>${row.tier}</strong></a>` : "";
+    };
 
     main.innerHTML = `
       <section class="hero spec-hero" style="--tint:${rgba(col, 0.28)};--ic:${col}">
@@ -185,26 +196,38 @@
             <span class="kicker" style="color:${col}">${esc(s.class.name)} · ${esc(s.roleName || role.label)}${s.primaryStat ? ` · ${esc(s.primaryStat)}` : ""}</span>
             <h1>${esc(s.name)} ${esc(s.class.name)}</h1>
             <p class="hero-sub">${esc(s.description)}</p>
+            <div class="badges">${tierBadge("mplus", "Mythic+")}${tierBadge("raid", "Raid")}</div>
           </div>
         </div>
         <div class="wrap">
           <div class="tabs" role="tablist" aria-label="Talent trees">
-            ${trees.map((t, i) => `<button type="button" role="tab" id="tab${i}" aria-controls="treePanel" aria-selected="${i === defaultTree}" data-t="${i}">
-              <small>${kindLabel[t.kind] || ""}</small>${esc(t.name)}</button>`).join("")}
+            ${trees.map((t, i) => `<button type="button" role="tab" id="tab${i}" aria-controls="treePanel" aria-selected="false" data-t="${i}">
+              <small>${kindLabel[t.kind] || ""}<span class="in-build" hidden> · in build</span></small>${esc(t.name)}</button>`).join("")}
           </div>
         </div>
       </section>
       <div class="wrap stack">
+        <section class="panel build-bar" aria-labelledby="build-h">
+          <div class="build-top">
+            <h2 id="build-h">Top build</h2>
+            <div class="seg" role="group" aria-label="Build to show">
+              ${modes.map(m => `<button type="button" data-mode="${m.id}">${m.label}</button>`).join("")}
+              <button type="button" data-mode="none">Tree only</button>
+              <span class="seg-soon" title="Coming in phase 7">PvP soon</span>
+            </div>
+          </div>
+          <div id="buildInfo"></div>
+        </section>
         ${s.treeMissing || !trees.length ? `<div class="errbox"><p>Blizzard didn't return a talent tree for this spec yet. It usually appears within a day of a patch.</p></div>` : `
         <div class="tree-layout">
-          <section class="panel tree-panel" id="treePanel" role="tabpanel" aria-labelledby="tab${defaultTree}">
+          <section class="panel tree-panel" id="treePanel" role="tabpanel" aria-labelledby="tab0">
             <div class="tree-tools">
               <label for="tsearch" class="sr">Find a talent</label>
               <input id="tsearch" type="search" placeholder="Find a talent…" autocomplete="off">
               <span id="tcount" class="muted" aria-live="polite"></span>
             </div>
             <div class="legend" aria-hidden="true">
-              <span><i class="lg sq"></i>Active</span><span><i class="lg circ"></i>Passive</span><span><i class="lg oct"></i>Choice</span><span><i class="lg free"></i>Free</span><span><i class="lg var"></i>Varies by spec</span>
+              <span class="lg-build"><i class="lg pick"></i>In build</span><span><i class="lg sq"></i>Active</span><span><i class="lg circ"></i>Passive</span><span><i class="lg oct"></i>Choice</span><span><i class="lg free"></i>Free</span><span><i class="lg var"></i>Varies by spec</span>
             </div>
             <div id="treeHost" class="tree-host"></div>
           </section>
@@ -213,36 +236,87 @@
             <div id="tipBody" aria-live="polite">${T.details(null)}</div>
           </aside>
         </div>`}
-        <section class="panel builds-soon">
-          <div class="panel-ic">${svgIcon("M12 2l2.6 6.6L21 9.3l-5 4.4 1.5 6.8L12 17l-5.5 3.5L8 13.7 3 9.3l6.4-.7z", col, 26)}</div>
-          <div>
-            <h2>Top Mythic+, Raid and PvP builds</h2>
-            <p>Phase 2 highlights the build top players run on this tree, with a one-click import string, stat priority and best-in-slot gear.</p>
-          </div>
-        </section>
+        <div id="buildExtras"></div>
       </div>`;
 
-    if (!trees.length) return;
-    const host = document.getElementById("treeHost");
-    const tipBody = document.getElementById("tipBody");
-    const search = document.getElementById("tsearch");
-    const count = document.getElementById("tcount");
+    const buildInfo = document.getElementById("buildInfo");
+    const extrasEl = document.getElementById("buildExtras");
+    const segBtns = [...main.querySelectorAll(".seg button")];
     const tabs = [...main.querySelectorAll('[role="tab"]')];
-    const tipPanel = main.querySelector(".tip-panel");
-    const narrow = matchMedia("(max-width: 900px)");
-    document.getElementById("sheetClose").addEventListener("click", () => tipPanel.classList.remove("sheet-open"));
-    let view;
+    let current = 0, view, buildMap = null;
+
+    const renderBuildInfo = () => {
+      segBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === (mode ? mode.id : "none"))));
+      if (!modes.length) {
+        buildInfo.innerHTML = `<p class="muted">Build data for this spec hasn't been collected yet. It refreshes every morning from top Mythic+ runs and raid logs.</p>`;
+        extrasEl.innerHTML = "";
+        return;
+      }
+      if (!mode) { buildInfo.innerHTML = `<p class="muted">Showing the plain talent tree. Pick Mythic+ or Raid to highlight what top players take.</p>`; extrasEl.innerHTML = ""; return; }
+      const b = mode.b;
+      const src = mode.id === "mplus"
+        ? `${b.sample} top Mythic+ players this season${b.topKey ? `, keys up to +${b.topKey}` : ""}${b.source === "Warcraft Logs" ? " (from Warcraft Logs, since few top Raider.IO runs had this spec)" : ""}`
+        : `${b.sample} top raid parses on ${(b.bosses || []).map(x => `${esc(x.name)} (${x.difficulty})`).join(", ")}`;
+      const importBlock = b.importString
+        ? `<div class="import">
+            <label for="importStr">Import string</label>
+            <input id="importStr" readonly value="${esc(b.importString)}">
+            <button type="button" class="btn gold" id="copyBtn">Copy build</button>
+          </div>
+          <p class="muted small">From ${esc(b.player.name)} (${esc(b.player.realm)}, ${esc(String(b.player.region).toUpperCase())})${b.player.differs ? `, whose loadout differs from the common build by ${b.player.differs} talent${b.player.differs === 1 ? "" : "s"}` : ", an exact match"}. In game: Talents → Import.</p>`
+        : `<p class="muted small">No top player's saved loadout matches this build closely enough to share an import string today, so the build is shown on the tree only.</p>`;
+      buildInfo.innerHTML = `<p class="build-src">Based on ${src}. Updated ${new Date(b.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.</p>${importBlock}`;
+      const copy = document.getElementById("copyBtn");
+      if (copy) copy.addEventListener("click", async () => {
+        const inp = document.getElementById("importStr");
+        try { await navigator.clipboard.writeText(inp.value); } catch { inp.select(); document.execCommand && document.execCommand("copy"); }
+        copy.textContent = "Copied ✓"; setTimeout(() => { copy.textContent = "Copy build"; }, 2000);
+      });
+      extrasEl.innerHTML = buildExtras(b, col);
+    };
+
     const show = i => {
-      tabs.forEach((b, j) => { b.setAttribute("aria-selected", String(j === i)); b.tabIndex = j === i ? 0 : -1; });
-      document.getElementById("treePanel").setAttribute("aria-labelledby", "tab" + i);
-      view = T.render(host, trees[i], { color: col, icons: API.icons, onSelect: (n, picked) => {
-        tipBody.innerHTML = T.details(n);
+      current = i;
+      tabs.forEach((t, j) => { t.setAttribute("aria-selected", String(j === i)); t.tabIndex = j === i ? 0 : -1; });
+      const panel = document.getElementById("treePanel");
+      if (!panel) return;
+      panel.setAttribute("aria-labelledby", "tab" + i);
+      panel.classList.toggle("has-build", !!buildMap);
+      view = T.render(host, trees[i], { color: col, icons: API.icons, build: buildMap, onSelect: (n, picked, pick) => {
+        tipBody.innerHTML = T.details(n, pick, !!buildMap);
         if (picked && narrow.matches) tipPanel.classList.add("sheet-open");
       } });
       tipBody.innerHTML = T.details(null);
       tipPanel.classList.remove("sheet-open");
       if (search.value) runSearch();
     };
+
+    const applyMode = () => {
+      buildMap = mode ? new Map(mode.b.picks.map(p => [p.node, p])) : null;
+      // Mark which tabs hold build talents, and open the spec tree (or the build's hero tree from a hero tab).
+      tabs.forEach((t, i) => {
+        const has = buildMap ? trees[i].nodes.some(n => buildMap.has(n.id) || (n.mergedIds || []).some(x => buildMap.has(x))) : false;
+        t.querySelector(".in-build").hidden = !(has && trees[i].kind === "hero");
+        t.classList.toggle("dim-tab", !!buildMap && trees[i].kind === "hero" && !has);
+      });
+      renderBuildInfo();
+      if (trees.length) show(current);
+    };
+
+    segBtns.forEach(b => b.addEventListener("click", () => {
+      mode = modes.find(m => m.id === b.dataset.mode) || null;
+      store.set("buildMode", mode ? mode.id : "none");
+      applyMode();
+    }));
+
+    if (!trees.length) { renderBuildInfo(); return; }
+    const host = document.getElementById("treeHost");
+    const tipBody = document.getElementById("tipBody");
+    const search = document.getElementById("tsearch");
+    const count = document.getElementById("tcount");
+    const tipPanel = main.querySelector(".tip-panel");
+    const narrow = matchMedia("(max-width: 900px)");
+    document.getElementById("sheetClose").addEventListener("click", () => tipPanel.classList.remove("sheet-open"));
     const runSearch = () => {
       const hits = view ? view.filter(search.value) : 0;
       count.textContent = search.value.trim() ? `${hits} match${hits === 1 ? "" : "es"}` : "";
@@ -258,7 +332,70 @@
       });
     });
     search.addEventListener("input", runSearch);
-    show(defaultTree);
+    current = Math.max(0, trees.findIndex(t => t.kind === "spec"));
+    applyMode();
+  }
+
+  // Stat priority and best-in-slot panels for a build.
+  function buildExtras(b, col) {
+    const stats = b.stats?.length ? `
+      <section class="panel" aria-labelledby="stat-h">
+        <h2 id="stat-h">Stat priority</h2>
+        <p class="muted small">Share of secondary stats on top players' characters.</p>
+        <ol class="stat-list">${b.stats.map((x, i) => `
+          <li><span class="stat-rank">${i + 1}</span><span class="stat-body"><span class="stat-row"><strong>${esc(x.stat)}</strong><span>${x.pct}%</span></span>
+          <span class="stat-bar"><span style="width:${Math.min(100, x.pct * 2)}%;background:${col}"></span></span></span></li>`).join("")}</ol>
+      </section>` : "";
+    const gear = b.gear?.length ? `
+      <section class="panel gear-panel" aria-labelledby="gear-h">
+        <h2 id="gear-h">Best in slot</h2>
+        <p class="muted small">The most-used items in each slot among the same top players.</p>
+        <div class="gear-grid">${b.gear.map(slot => `
+          <div class="gear-slot"><h3>${esc(slot.slot)}</h3>${slot.items.map((it, i) => `
+            <div class="gear-item${i ? " alt" : ""}">
+              <span class="gear-ic q-${esc(it.quality)}">${it.icon ? `<img src="${esc(it.icon)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>
+              <span class="gear-txt"><a class="q-${esc(it.quality)}" href="https://www.wowhead.com/item=${it.id}" target="_blank" rel="noopener">${esc(it.name)}</a>
+                <small>${it.ilvl ? `ilvl ${it.ilvl} · ` : ""}${it.pct}% use it${it.enchant ? ` · ${esc(it.enchant)}` : ""}${it.gems?.length ? ` · ${it.gems.map(esc).join(", ")}` : ""}</small></span>
+            </div>`).join("")}</div>`).join("")}</div>
+      </section>` : "";
+    return stats || gear ? `<div class="split extras">${stats}${gear}</div>` : "";
+  }
+
+  async function pageTiers(which) {
+    which = which === "raid" ? "raid" : "mplus";
+    main.innerHTML = `
+      ${pageHero({ kicker: "Retail · Updated every morning", title: "Tier lists", sub: "Which specs top players bring right now: Mythic+ from Raider.IO's top runs, raid from Warcraft Logs' top parses." })}
+      <div class="wrap stack"><div id="tierBody">${loading("Loading tier lists…")}</div></div>`;
+    const [tiers, cls] = await Promise.all([API.tiers(), API.classes().catch(() => null)]);
+    const body = document.getElementById("tierBody");
+    if (!body) return;
+    if (!tiers || !tiers[which]) { body.innerHTML = `<section class="panel"><p>Tier lists haven't been built yet. They're created by the daily data job; check back after it runs.</p></section>`; return; }
+    const specInfo = new Map();
+    for (const c of cls?.classes || []) for (const sp of c.specs) specInfo.set(sp.id, { name: sp.name, className: c.name, classId: c.id });
+    const t = tiers[which];
+    const note = which === "mplus"
+      ? `Share of slots in the top ${t.runs} ${esc(t.season?.name || "")} runs. A tank or healer share is out of every run; a DPS share is out of the three DPS slots.`
+      : `Median ${"performance"} of the top 50 players per spec on ${(t.bosses || []).map(esc).join(", ")}, compared with the best spec in the same role. Bosses rotate daily.`;
+    const roleBlock = roleKey => {
+      const rows = t.roles?.[roleKey] || [];
+      const role = D.ROLES[roleKey];
+      const groups = ["S", "A", "B", "C"].map(tier => ({ tier, specs: rows.filter(r => r.tier === tier) })).filter(g => g.specs.length);
+      return `<section class="panel tier-role">
+        <h2>${svgIcon(role.icon, role.color, 20, 2)} ${roleKey === "DAMAGE" ? "DPS" : role.label + "s"}</h2>
+        ${groups.map(g => `<div class="tier-row"><span class="tier-letter t-${g.tier}">${g.tier}</span><div class="tier-specs">${g.specs.map(r => {
+          const info = specInfo.get(r.spec) || { name: `Spec ${r.spec}`, className: "", classId: 0 };
+          const value = which === "mplus" ? `${r.share}%` : `${r.score}%`;
+          return `<a class="tier-spec" href="#/spec/${r.spec}" style="--ic:${colorOf(info.classId)}"><span class="ts-name">${esc(info.name)} <span>${esc(info.className)}</span></span><span class="ts-val">${value}</span></a>`;
+        }).join("")}</div></div>`).join("")}
+      </section>`;
+    };
+    body.innerHTML = `
+      <div class="seg tier-seg" role="group" aria-label="Content">
+        <a href="#/tiers/mplus" aria-pressed="${which === "mplus"}">Mythic+</a>
+        <a href="#/tiers/raid" aria-pressed="${which === "raid"}">Raid</a>
+      </div>
+      <p class="muted small">${note} Updated ${new Date(t.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.</p>
+      <div class="tier-grid">${["TANK", "HEALER", "DAMAGE"].map(roleBlock).join("")}</div>`;
   }
 
   function pageComing(sec) {
@@ -331,6 +468,7 @@
     if (!a) pageHome();
     else if (a === "specs") { section = "specs"; pageSpecs(/^\d+$/.test(b || "") ? b : null); }
     else if (a === "spec" && /^\d+$/.test(b || "")) { section = "specs"; pageSpec(b); }
+    else if (a === "tiers") { section = "tiers"; pageTiers(b); }
     else if (a === "classic") { version = "classic"; section = ""; pageClassic(); }
     else if (a === "forever") { version = "forever"; section = ""; pageForever(); }
     else {

@@ -2,7 +2,7 @@
 window.WOW_API = (() => {
   const base = String((window.WOW_CONFIG || {}).apiBase || "").replace(/\/+$/, "");
   const LOCAL_HOURS = 6;
-  const VERSION = "5"; // bump with the Worker's CACHE_VERSION so browsers drop old answers
+  const VERSION = "6"; // bump with the Worker's CACHE_VERSION so browsers drop old answers
   const PREFIX = `wowc:v${VERSION}:`;
 
   function readLocal(key) {
@@ -63,9 +63,23 @@ window.WOW_API = (() => {
     return map;
   }
 
+  // Builds and tier lists are files the daily GitHub Actions job publishes next to the site.
+  const siteCache = new Map();
+  function siteData(rel) {
+    if (!siteCache.has(rel)) {
+      siteCache.set(rel, fetch(`data/${rel}`, { cache: "no-cache" })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null));
+    }
+    return siteCache.get(rel);
+  }
+
   return {
     configured: !!base,
     icons,
+    builds: specId => siteData(`builds/${specId}.json`),
+    tiers: () => siteData("tiers.json"),
+    meta: () => siteData("meta.json"),
     classes: () => get("/api/classes"),
     cls: id => get(`/api/class/${id}`),
     spec: id => get(`/api/spec/${id}`)

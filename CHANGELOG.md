@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10 — Phase 2: top builds and tier lists
+
+- Spec pages now have a **Top build** panel with Mythic+ and Raid modes: the talents top players take are highlighted on the tree (others dimmed), with how many of them take each one; the hero tree in the build is marked on its tab
+- **Import strings** come from a real top player's saved loadout when it matches the build within 2 talents; otherwise the build is shown on the tree only
+- **Stat priority** (from top players' Blizzard character stats) and **best in slot** per slot with item level, usage share, enchants and gems
+- New **Tier Lists** page for tanks, healers and DPS: Mythic+ from Raider.IO's top 500 runs, Raid from Warcraft Logs' top 50 parses on 3 bosses that rotate daily; tier badges in each spec's header
+- Specs that are rare in top Mythic+ runs get their Mythic+ build from Warcraft Logs' Mythic+ rankings instead
+- New daily GitHub Actions job (`scripts/build-data.mjs`, `.github/workflows/pages.yml`) builds this data every morning and publishes the site; uploads publish right away and keep the current data; a spec that fails to refresh keeps its last good copy
+- Worker marks merged spec-variant talent slots so builds that name either version light them up; cache versions bumped (redeploy the Worker)
+
 ## 2026-10 — Remove empty placeholder talents
 
 - Blizzard includes empty placeholder nodes (no talent, no spell) at the top of most class trees and a few spec trees; they showed as a stray "T" node and are now left out

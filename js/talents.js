@@ -49,16 +49,25 @@ window.WOW_TALENTS = (() => {
       lines.push(`<line x1="${(pos[i].c + 0.5) * 100}" y1="${(pos[i].r + 0.5) * 100}" x2="${(pos[j].c + 0.5) * 100}" y2="${(pos[j].r + 0.5) * 100}"/>`);
     }));
 
+    // Build overlay: opts.build maps node id -> { spell, rank, pct, granted }.
+    const build = opts.build || null;
+    const pickOf = n => (build ? build.get(n.id) || (n.mergedIds || []).map(id => build.get(id)).find(Boolean) || null : null);
+    const picks = nodes.map(pickOf);
+    const chosenIndex = (n, p) => { if (!p) return -1; const list = n.variants ? n.variants.flat() : n.choices; return Math.max(0, list.findIndex(c => c.spellId === p.spell)); };
+
     const order = nodes.map((n, i) => i).sort((a, b) => pos[a].r - pos[b].r || pos[a].c - pos[b].c);
     const buttons = order.map(i => {
       const n = nodes[i];
       const first = n.choices[0] || { name: "Talent" };
       const names = (n.variants ? n.variants.map(v => v.map(c => c.name).join(" or ")) : [n.choices.map(c => c.name).join(" or ")]).join(", or for other specs ");
-      const label = `${names}. ${TYPE_LABEL[n.type] || "Talent"}${n.maxRank > 1 ? `, ${n.maxRank} ranks` : ""}${n.free ? ", granted free" : ""}`;
-      return `<button type="button" class="tnode ${nodeShape(n.type)}${n.free ? " free" : ""}${n.variants ? " var" : ""}" data-i="${i}"
+      const p = picks[i];
+      const pickedName = p ? ((n.variants ? n.variants.flat() : n.choices)[chosenIndex(n, p)] || first).name : "";
+      const label = `${names}. ${TYPE_LABEL[n.type] || "Talent"}${n.maxRank > 1 ? `, ${n.maxRank} ranks` : ""}${n.free ? ", granted free" : ""}${build ? (p ? `. In this build: ${pickedName}${n.maxRank > 1 ? `, rank ${p.rank}` : ""}` : ". Not in this build") : ""}`;
+      const state = build ? (p ? " pick" : " skip") : "";
+      return `<button type="button" class="tnode ${nodeShape(n.type)}${n.free ? " free" : ""}${n.variants ? " var" : ""}${state}" data-i="${i}"
         style="left:${((pos[i].c + 0.5) / cols) * 100}%;top:${pos[i].r * ROW_H + ROW_H / 2}px" aria-label="${esc(label)}">
         <span class="tn-face"><span class="tn-letters">${esc(n.type === "CHOICE" && n.choices[1] ? initials(first.name)[0] + initials(n.choices[1].name)[0] : initials(first.name))}</span></span>
-        ${n.maxRank > 1 ? `<span class="tn-rank">${n.maxRank}</span>` : ""}
+        ${n.maxRank > 1 ? `<span class="tn-rank">${picks[i] ? `${picks[i].rank}/${n.maxRank}` : n.maxRank}</span>` : ""}
       </button>`;
     }).join("");
 
@@ -75,30 +84,31 @@ window.WOW_TALENTS = (() => {
         btns.forEach(b => b.classList.toggle("sel", +b.dataset.i === i));
         selected = i;
       }
-      opts.onSelect && opts.onSelect(nodes[i], sticky === "click");
+      opts.onSelect && opts.onSelect(nodes[i], sticky === "click", picks[i]);
     };
     btns.forEach(b => {
       const i = +b.dataset.i;
       b.addEventListener("click", () => select(i, "click"));
       b.addEventListener("focus", () => select(i, true));
       b.addEventListener("mouseenter", () => select(i, false));
-      b.addEventListener("mouseleave", () => { if (selected != null) opts.onSelect && opts.onSelect(nodes[selected]); });
+      b.addEventListener("mouseleave", () => { if (selected != null) opts.onSelect && opts.onSelect(nodes[selected], false, picks[selected]); });
     });
 
     // Swap the letters for real spell icons once they arrive (choice nodes show both halves).
     if (opts.icons) {
-      const faceSpells = n => (n.variants ? n.variants[0] : n.choices).slice(0, 2).map(c => c.spellId).filter(Boolean);
+      // A choice node in a build shows only the chosen option's icon.
+      const faceSpells = (n, p) => (p && (n.variants || n.choices.length > 1) ? [p.spell] : (n.variants ? n.variants[0] : n.choices).slice(0, 2).map(c => c.spellId)).filter(Boolean);
       const all = nodes.flatMap(n => (n.variants ? n.variants.flat() : n.choices).map(c => c.spellId)).filter(Boolean);
       opts.icons(all).then(map => {
         Object.assign(iconMap, map);
         btns.forEach(b => {
           const n = nodes[+b.dataset.i];
-          const urls = faceSpells(n).map(id => map[id]).filter(Boolean);
+          const urls = faceSpells(n, picks[+b.dataset.i]).map(id => map[id]).filter(Boolean);
           if (!urls.length || !b.isConnected) return;
           const face = b.querySelector(".tn-face");
           face.insertAdjacentHTML("beforeend", `<span class="tn-icons">${urls.map(u => `<img src="${esc(u)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</span>`);
         });
-        if (selected != null && opts.onSelect) opts.onSelect(nodes[selected]);
+        if (selected != null && opts.onSelect) opts.onSelect(nodes[selected], false, picks[selected]);
       }).catch(() => {});
     }
 
@@ -116,12 +126,18 @@ window.WOW_TALENTS = (() => {
         });
         return hits;
       },
-      selectFirst() { if (order.length) select(order[0], true); }
+      selectFirst() { if (order.length) select(order[0], true); },
+      pickCount: picks.filter(Boolean).length
     };
   }
 
-  function details(n) {
+  function details(n, pick, inBuild) {
     if (!n) return `<p class="muted">Hover over, tap or tab to a talent to read it.</p>`;
+    const all = n.variants ? n.variants.flat() : n.choices;
+    const chosen = pick ? all.find(c => c.spellId === pick.spell) : null;
+    const buildNote = !inBuild ? "" : pick
+      ? `<div class="tip-build in"><strong>In this build${chosen && all.length > 1 ? `: ${esc(chosen.name)}` : ""}${n.maxRank > 1 ? ` (rank ${pick.rank}/${n.maxRank})` : ""}</strong><span>${pick.granted ? "Granted free" : `Taken by ${pick.pct}% of top players`}</span></div>`
+      : `<div class="tip-build out"><strong>Not in this build</strong><span>Fewer than half of top players take it</span></div>`;
     const meta = [TYPE_LABEL[n.type] || "Talent", n.maxRank > 1 ? `${n.maxRank} ranks` : "", n.free ? "Granted free" : "", n.variants ? "Varies by spec" : ""].filter(Boolean);
     const opt = (c, i) => `
       <div class="tip-opt">
@@ -134,7 +150,7 @@ window.WOW_TALENTS = (() => {
     const body = n.variants
       ? `<p class="tip-var">This slot changes by spec. You'll see one of these:</p>` + n.variants.map(group).join(`<div class="tip-div">other spec</div>`)
       : group(n.choices);
-    return `<div class="tip-meta">${meta.map(m => `<span>${esc(m)}</span>`).join("")}</div>${body}`;
+    return `${buildNote}<div class="tip-meta">${meta.map(m => `<span>${esc(m)}</span>`).join("")}</div>${body}`;
   }
 
   return { render, details, initials };
