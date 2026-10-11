@@ -520,7 +520,7 @@ function raidTiers(specs, results) {
   return roles;
 }
 
-/* -------------------------------------------- main -------------------------------------------- */
+/* ------------------------------------ data-job building blocks ------------------------------------ */
 
 /* -------------------------------------- Adventure Guide -------------------------------------- */
 // Blizzard's in-game Adventure Guide (the "journal") for the current raid and this season's Mythic+
@@ -661,6 +661,42 @@ async function writeGuide(tiers) {
   } catch (e) { log("guide failed:", e.message); }
 }
 
+/* --------------------------------- Classic Era and TBC talents --------------------------------- */
+// The Classic section's tree layouts ship with the site (notes/trees-era.json and trees-tbc.json, from the
+// wowsims projects). Talent names, icons and descriptions come from Wowhead's Classic and TBC tooltips.
+// They never change, so they're only rebuilt when CLASSIC_VERSION changes.
+const CLASSIC_VERSION = 1;
+const CLASSIC_TOOLTIP = {
+  era: env.CLASSIC_TOOLTIP_ERA || "https://nether.wowhead.com/classic/tooltip/spell/{id}?dataEnv=4&locale=0",
+  tbc: env.CLASSIC_TOOLTIP_TBC || "https://nether.wowhead.com/tbc/tooltip/spell/{id}?dataEnv=5&locale=0"
+};
+async function classicTalents(version) {
+  const trees = JSON.parse(await fs.readFile(path.join(env.NOTES_DIR || "notes", `trees-${version}.json`), "utf8"));
+  const talents = Object.values(trees).flat().flatMap(t => t.talents);
+  const out = {};
+  let ok = 0;
+  await pool(talents, 6, async t => {
+    const get = id => getJson(CLASSIC_TOOLTIP[version].replace("{id}", id), { headers: { "User-Agent": "WoW Companion personal guide (GitHub Actions)" } }, 2).catch(() => null);
+    const first = await get(t.ids[0]);
+    const last = t.ids.length > 1 ? await get(t.ids[t.ids.length - 1]) : first;
+    if (!first) return;
+    const clean = j => tooltipText(j?.tooltip, j?.name).text.split("\n").filter(l => !/^(talent|requires .+|rank \d+|next rank:?.*)$/i.test(l)).join("\n");
+    out[t.ids[0]] = { name: first.name, icon: first.icon ? `https://wow.zamimg.com/images/wow/icons/large/${first.icon}.jpg` : "", text: clean(last) || clean(first) };
+    ok++;
+  });
+  log(`classic ${version}: talent tooltips for ${ok}/${talents.length}`);
+  // If too many lookups failed, leave the version unset so the next run tries again.
+  return { version: ok >= talents.length * 0.95 ? CLASSIC_VERSION : 0, updated: new Date().toISOString(), talents: out };
+}
+async function writeClassic() {
+  for (const v of ["era", "tbc"]) {
+    const have = await fs.readFile(path.join(OUT, `classic/talents-${v}.json`), "utf8").then(JSON.parse).catch(() => null);
+    if (have?.version === CLASSIC_VERSION && Object.keys(have.talents || {}).length) continue;
+    try { await writeJson(`classic/talents-${v}.json`, await classicTalents(v)); }
+    catch (e) { log(`classic ${v} failed: ${e.message}`); }
+  }
+}
+
 /* -------------------------------------------- main -------------------------------------------- */
 async function main() {
   await fs.mkdir(OUT, { recursive: true });
@@ -674,6 +710,7 @@ async function main() {
       const liveTiers = await fs.readFile(path.join(OUT, "tiers.json"), "utf8").then(JSON.parse).catch(() => ({}));
       await writeGuide(liveTiers);
     }
+    await writeClassic();
     await writeJson("meta.json", { ...prevMeta, files: await listFiles() });
     log("REFRESH=false: kept the live data");
     return;
@@ -753,6 +790,7 @@ async function main() {
   for (const b of pendingGear) if (typeof b.gear === "function") b.gear = b.gear();
 
   await writeGuide(tiers);
+  await writeClassic();
 
   for (const s of specs) await writeJson(`builds/${s.id}.json`, { spec: s.id, name: s.name, className: s.className, role: s.role, ...builds.get(s.id) });
   await writeJson("tiers.json", tiers);

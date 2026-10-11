@@ -25,7 +25,7 @@ window.WOW_DATA = (() => {
 
   const VERSIONS = [
     { id: "retail", label: "Retail", href: "#/" },
-    { id: "classic", label: "Classic Era", href: "#/classic" },
+    { id: "classic", label: "Classic", href: "#/classic" },
     { id: "forever", label: "Forever", href: "#/forever" }
   ];
 
@@ -56,7 +56,7 @@ window.WOW_DATA = (() => {
     { phase: 3, title: "My Characters", text: "Battle.net login and character compare", done: true },
     { phase: 4, title: "Leveling & dungeons", text: "Leveling tips and boss notes", done: true },
     { phase: 5, title: "WoW Forever", text: "Zones, dungeons and leveling after launch" },
-    { phase: 6, title: "Classic Era", text: "Talents, pre-raid gear, Hardcore tips" },
+    { phase: 6, title: "Classic Era & TBC", text: "Talent builds, leveling and pre-raid gear", done: true },
     { phase: 7, title: "PvP & polish", text: "PvP tier lists, search everywhere" }
   ];
 

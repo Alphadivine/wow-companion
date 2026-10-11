@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10 — Phase 6: Classic Era and TBC Anniversary
+
+- New **Classic** section with a switch between Classic Era (level 60) and TBC Anniversary (level 70, Phase 3)
+- Every class's three talent trees drawn with the points for each build; tap a talent for its name, rank and description
+- Endgame builds per class: Classic Era from Warcraft Tavern and Wowhead calculator links in current guides, each checked against the tree rules (point totals, ranks, prerequisites, 5 points per row); TBC raid builds from the wowsims simulator presets. Builds without a link show their point split and notes
+- Leveling: spec, key abilities, talent order notes and, where available, the leveling build with a level-by-level point order
+- Pre-raid best in slot (TBC: pre-raid and catch-up gear) with Wowhead item links and where each item comes from
+- The data job fetches Classic and TBC talent names, icons and descriptions from Wowhead once
+- The version button now says "Classic"
+
 ## 2026-10 — Phase 4 fixes from the first real Adventure Guide data
 
 - Ability entries now show their description, cast time and icon. Blizzard's guide only links each ability to its spell, and Blizzard's web API has no text or icons for boss spells, so the data job reads them from Wowhead's public tooltip service (credited on the page)

@@ -942,17 +942,172 @@
       </div>`;
   }
 
-  function pageClassic() {
+  /* ------------------------------ Classic Era and TBC Anniversary ------------------------------ */
+  const CLASSIC_IDS = { warrior: 1, paladin: 2, hunter: 3, rogue: 4, priest: 5, shaman: 7, mage: 8, warlock: 9, druid: 11 };
+  const CL_VERSIONS = { era: { label: "Classic Era", cap: 60, wh: "classic" }, tbc: { label: "TBC Anniversary", cap: 70, wh: "tbc" } };
+  const B36 = "0123456789abcdefghijklmnopqrstuvwxyz";
+  const cleanBuildName = n => String(n || "").replace(/\s+\d+\/\d+\/\d+$/, "");
+
+  // Turns a saved build (a Wowhead talent string, or a Warcraft Tavern spend-order string) into points per talent.
+  function decodeBuild(trees, b) {
+    if (!b) return null;
+    const pts = trees.map(t => t.talents.map(() => 0));
+    const order = [];
+    if (b.kind === "wowhead") {
+      b.code.split("-").slice(0, 3).forEach((part, ti) => [...part].forEach((ch, i) => { if (pts[ti] && i < pts[ti].length) pts[ti][i] = +ch; }));
+    } else {
+      let tree = null;
+      for (const ch of b.code) {
+        if ("ABC".includes(ch)) { tree = "ABC".indexOf(ch); continue; }
+        const g = B36.indexOf(ch), r = Math.floor(g / 4), c = g % 4;
+        const i = trees[tree]?.talents.findIndex(t => t.r === r && t.c === c);
+        if (i == null || i < 0) continue;
+        pts[tree][i]++; order.push([tree, i]);
+      }
+    }
+    return { pts, order };
+  }
+
+  // Draws a Classic talent tree: a 4-column grid with points on each talent.
+  function classicTree(tree, pts, info, ti, col) {
+    const rows = Math.max(...tree.talents.map(t => t.r)) + 1;
+    const spent = pts ? pts.reduce((a, b) => a + b, 0) : 0;
+    const cells = tree.talents.map((t, i) => {
+      const p = pts ? pts[i] : 0, d = info?.[t.ids[0]];
+      const name = d?.name || t.guess;
+      return `<button type="button" class="ct-node${p ? " on" : ""}${p && p === t.max ? " full" : ""}${pts && !p ? " off" : ""}" style="grid-row:${t.r + 1};grid-column:${t.c + 1}" data-t="${ti}:${i}" aria-label="${esc(`${name}, ${p} of ${t.max} points`)}">
+        ${d?.icon ? `<img src="${esc(d.icon)}" alt="" loading="lazy" onerror="this.remove()">` : `<span class="ct-l">${esc(T.initials(name))}</span>`}
+        <span class="ct-pts">${p}/${t.max}</span>${t.pre ? `<span class="ct-pre" aria-hidden="true"></span>` : ""}
+      </button>`;
+    }).join("");
+    return `<div class="ct-tree" style="--ic:${col}">
+      <div class="ct-head"${tree.bg ? ` style="background-image:linear-gradient(rgba(10,12,18,.65),rgba(10,12,18,.92)),url('${esc(tree.bg)}')"` : ""}><strong>${esc(tree.name)}</strong><span>${spent}</span></div>
+      <div class="ct-grid" style="grid-template-rows:repeat(${rows}, 52px)">${cells}</div>
+    </div>`;
+  }
+  function wireClassicTrees(root, trees, getPts, info, tipEl, level0) {
+    root.querySelectorAll(".ct-node").forEach(btn => {
+      const show = () => {
+        const [ti, i] = btn.dataset.t.split(":").map(Number);
+        const t = trees[ti].talents[i], d = info?.[t.ids[0]], p = getPts()?.[ti]?.[i] || 0;
+        root.querySelectorAll(".ct-node.sel").forEach(x => x.classList.remove("sel")); btn.classList.add("sel");
+        tipEl.innerHTML = `<h4>${d?.icon ? `<img class="tip-ic" src="${esc(d.icon)}" alt="">` : ""}${esc(d?.name || t.guess)}</h4>
+          <div class="tip-meta"><span>${esc(trees[ti].name)}</span><span>Rank ${p}/${t.max}</span>${t.r ? `<span>Needs ${t.r * 5} points in ${esc(trees[ti].name)}</span>` : ""}${t.pre ? `<span>Needs the talent above it maxed</span>` : ""}</div>
+          ${d?.text ? `<p class="pre">${esc(d.text)}</p>` : `<p class="muted small">Talent details arrive with the next data refresh.</p>`}`;
+      };
+      btn.addEventListener("click", show); btn.addEventListener("focus", show); btn.addEventListener("mouseenter", show);
+    });
+  }
+  function buildPanel(id, title, trees, build, info, col, extra = "") {
+    const dec = decodeBuild(trees, build);
+    return `<div class="ct-trees" id="${id}">${trees.map((t, ti) => classicTree(t, dec?.pts[ti], info, ti, col)).join("")}</div>
+      <div class="ct-tip" id="${id}Tip" aria-live="polite"><p class="muted small">Hover over or tap a talent to read it.</p></div>${extra}`;
+  }
+  const orderList = (trees, build, info, startLevel) => {
+    const dec = decodeBuild(trees, build);
+    if (!dec?.order.length) return "";
+    // Group consecutive points in the same talent: "10–12 Improved Heroic Strike (3)".
+    const runs = [];
+    dec.order.forEach(([ti, i], n) => { const last = runs[runs.length - 1]; if (last && last.ti === ti && last.i === i) last.to = n; else runs.push({ ti, i, from: n, to: n }); });
+    return `<details class="ct-order"><summary>Point order, level by level</summary><ol>${runs.map(r => { const t = trees[r.ti].talents[r.i]; const nm = info?.[t.ids[0]]?.name || t.guess; const a = startLevel + r.from, z = startLevel + r.to; return `<li><span class="lv">${a === z ? a : `${a}–${z}`}</span> ${esc(nm)} <span class="muted">(${r.to - r.from + 1})</span> <span class="tr-tag">${esc(trees[r.ti].name)}</span></li>`; }).join("")}</ol></details>`;
+  };
+
+  async function pageClassic(v, clsKey) {
+    v = v === "tbc" ? "tbc" : "era";
+    const V = CL_VERSIONS[v];
+    document.title = `${V.label} · WoW Companion`;
+    main.innerHTML = `<div class="wrap">${loading("Loading Classic guides…")}</div>`;
+    const [notes, trees, cls] = await Promise.all([API.notes(`classic-${v}`), API.notes(`trees-${v}`), API.classes().catch(() => null)]);
+    const talentInfo = (await API.classicTalents(v))?.talents || null;
+    if (!notes || !trees) { main.innerHTML = `<div class="wrap stack"><div class="errbox"><p>The Classic guides didn't load. Try again in a moment.</p></div></div>`; return; }
+    const iconOf = key => cls?.classes?.find(c => c.id === CLASSIC_IDS[key])?.icon || "";
+    const seg = `<div class="seg" role="group" aria-label="Classic version">${Object.entries(CL_VERSIONS).map(([k, x]) => `<a href="#/classic/${k}${clsKey ? "/" + clsKey : ""}" aria-pressed="${k === v}">${x.label} <small>· ${x.cap}</small></a>`).join("")}</div>`;
+    if (clsKey) return pageClassicClass(v, V, notes, trees, talentInfo, clsKey, iconOf, seg);
+
     main.innerHTML = `
-      ${pageHero({ kicker: "Classic Era · Level 1–60 · Coming in phase 6", title: "Classic Era", sub: "Talent point splits, pre-raid best in slot, raid tier lists from Warcraft Logs Classic, and a Hardcore mode that flags the elites and quests that end runs.", tint: "rgba(230,196,106,0.2)" })}
+      ${pageHero({ kicker: `${V.label} · Level ${V.cap}`, title: esc(V.label), sub: v === "tbc" ? esc(notes.phase || "The Burning Crusade on the Anniversary realms.") : "The permanent 1.15 realms with every phase open: leveling builds, raid talent builds and pre-raid best in slot for all nine classes.", tint: "rgba(230,196,106,0.2)" })}
       <div class="wrap stack">
-        <div class="split">
-          <section class="panel"><h2>What's planned</h2><ul class="bullets">
-            <li>Leveling tips per class, with Era and Hardcore versions</li><li>Talent trees with the point split top players use</li>
-            <li>Pre-raid best in slot by slot</li><li>Raid tier lists for Molten Core through Naxxramas</li></ul></section>
-          <section class="panel hc"><h2>Hardcore: stay alive</h2><p>A red-alert panel of dangerous elites, patrols and quests by zone, so one bad pull doesn't end a character.</p></section>
-        </div>
+        ${seg}
+        <section aria-labelledby="cl-h"><div class="sec-head"><h2 id="cl-h">Pick a class</h2></div>
+          <div class="class-grid">${notes.classes.map(c => { const k = c.class.toLowerCase(); return `
+            <a class="class-tile lift" href="#/classic/${v}/${k}" style="--ic:${colorOf(CLASSIC_IDS[k])}">
+              <span class="sc-top">${iconFrame(iconOf(k), c.class[0], colorOf(CLASSIC_IDS[k]), "sm")}<span class="ct-name">${esc(c.class)}</span></span>
+              <span class="ct-specs">Level as <strong>${esc(c.leveling.spec || "")}</strong> · ${c.endgame.length} endgame build${c.endgame.length === 1 ? "" : "s"}</span>
+            </a>`; }).join("")}</div>
+        </section>
+        ${notes.route?.length ? `<section class="panel" aria-labelledby="clr-h"><h2 id="clr-h">Leveling route${v === "tbc" ? " to 70" : " to 60"}</h2><ol class="route">${notes.route.map(r => `<li>${esc(r)}</li>`).join("")}</ol>${sourceList(notes.routeSources, notes.checked)}</section>` : ""}
+        ${(notes.notes || []).map(n => `<p class="muted small">${esc(n)}</p>`).join("")}
       </div>`;
+  }
+
+  function pageClassicClass(v, V, notes, allTrees, info, key, iconOf, seg) {
+    const c = notes.classes.find(x => x.class.toLowerCase() === key);
+    const trees = allTrees[key];
+    if (!c || !trees) { pageNotFound(); return; }
+    const col = colorOf(CLASSIC_IDS[key]);
+    document.title = `${c.class} · ${V.label} · WoW Companion`;
+    let pick = Math.max(0, c.endgame.findIndex(e => e.build));
+    const L = c.leveling;
+    const startLevel = 10;
+    main.innerHTML = `
+      <section class="hero spec-hero" style="--tint:${rgba(col, 0.28)};--ic:${col}">
+        ${moonArt(col)}
+        <div class="wrap hero-in">
+          ${iconFrame(iconOf(key), c.class[0], col, "xl")}
+          <div class="hero-text rise">
+            <a class="back" href="#/classic/${v}">← All ${esc(V.label)} classes</a>
+            <span class="kicker" style="color:${col}">${esc(V.label)} · Level ${V.cap}</span>
+            <h1>${esc(c.class)}</h1>
+            ${L.tip ? `<p class="hero-sub">${esc(L.tip)}</p>` : ""}
+          </div>
+        </div>
+      </section>
+      <div class="wrap stack">
+        ${seg}
+        <section class="panel" aria-labelledby="cle-h">
+          <div class="build-top"><h2 id="cle-h">Endgame builds</h2>
+            <div class="seg" role="group" aria-label="Build">${c.endgame.map((e, i) => `<button type="button" data-b="${i}" aria-pressed="${i === pick}">${esc(cleanBuildName(e.name))}</button>`).join("")}</div></div>
+          <div id="egBody"></div>
+        </section>
+        <section class="panel" aria-labelledby="cll-h">
+          <h2 id="cll-h">Leveling as ${esc(L.spec || "")}</h2>
+          ${L.keyAbilities?.length ? `<ul class="lv-abilities cols">${L.keyAbilities.map(k => `<li><span class="lv-ic">${esc(T.initials(k.name))}</span><span><strong>${esc(k.name)}</strong><small>${esc(k.why)}</small></span></li>`).join("")}</ul>` : ""}
+          ${L.order?.length ? `<h3 class="sub-h">Talent order</h3>${bullets(L.order)}` : ""}
+          ${L.build ? `<h3 class="sub-h">Leveling build at ${L.build.points >= (v === "tbc" ? 61 : 51) ? V.cap : `${L.build.points + 9}`} (${esc(L.build.split)})</h3>${buildPanel("lvTrees", "Leveling", trees, L.build, info, col, orderList(trees, L.build, info, startLevel))}
+            <p class="muted small"><a href="${esc(L.build.link)}" target="_blank" rel="noopener">Open this build in ${L.build.kind === "wowhead" ? "Wowhead" : "Warcraft Tavern"}</a></p>` : `<p class="muted small">No leveling calculator link was found for this class, so the talent order above is the guide.</p>`}
+        </section>
+        ${c.gear?.length ? `<section class="panel" aria-labelledby="clg-h">
+          <h2 id="clg-h">${v === "tbc" ? "Pre-raid and catch-up gear" : "Pre-raid best in slot"}</h2>
+          ${c.gear.length > 1 ? `<div class="seg gear-seg" role="group" aria-label="Spec">${c.gear.map((g, i) => `<button type="button" data-g="${i}" aria-pressed="${i === 0}">${esc(g.spec)}</button>`).join("")}</div>` : `<p class="muted small">${esc(c.gear[0].spec)}</p>`}
+          <div id="gearBody"></div>
+        </section>` : ""}
+        ${sourceList(c.sources, notes.checked)}
+      </div>`;
+
+    const egBody = document.getElementById("egBody");
+    const drawEndgame = () => {
+      const e = c.endgame[pick];
+      main.querySelectorAll("[data-b]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.b === pick)));
+      egBody.innerHTML = `
+        <p class="build-src"><span class="role-pill r-${esc(e.role)}">${esc({ tank: "Tank", healer: "Healer", dps: "DPS" }[e.role] || e.role)}</span>${e.split ? ` <strong>${esc(e.split)}</strong>` : ""} ${esc(e.notes || "")}</p>
+        ${e.build ? buildPanel("egTrees", e.name, trees, e.build, info, col) + `<p class="muted small"><a href="${esc(e.build.link)}" target="_blank" rel="noopener">Open in ${e.build.kind === "wowhead" ? "Wowhead's talent calculator" : "Warcraft Tavern's talent calculator"}</a>${e.build.page && e.build.page.includes("wowsims") ? " · build from the wowsims simulator" : ""}</p>`
+          : `<p class="muted small">No calculator link was found for this build, so only the point split and notes are shown.</p>`}`;
+      if (e.build) { const dec = decodeBuild(trees, e.build); wireClassicTrees(egBody, trees, () => dec.pts, info, document.getElementById("egTreesTip")); }
+    };
+    main.querySelectorAll("[data-b]").forEach(b => b.addEventListener("click", () => { pick = +b.dataset.b; drawEndgame(); }));
+    drawEndgame();
+    if (L.build) { const dec = decodeBuild(trees, L.build); wireClassicTrees(document.getElementById("lvTrees").parentElement, trees, () => dec.pts, info, document.getElementById("lvTreesTip")); }
+
+    const gearBody = document.getElementById("gearBody");
+    if (gearBody) {
+      const drawGear = gi => {
+        main.querySelectorAll("[data-g]").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.g === gi)));
+        const g = c.gear[gi];
+        gearBody.innerHTML = `${g.phase ? `<p class="muted small">${esc(g.phase)}</p>` : ""}<table class="kick cl-gear"><thead><tr><th>Slot</th><th>Item</th><th>Where</th></tr></thead><tbody>${g.items.map(it => `<tr><td>${esc(it.slot)}</td><td><a href="https://www.wowhead.com/${V.wh}/item=${encodeURIComponent(it.itemId)}" target="_blank" rel="noopener"><strong>${esc(it.name)}</strong></a></td><td>${esc(it.source || "")}</td></tr>`).join("")}</tbody></table>`;
+      };
+      main.querySelectorAll("[data-g]").forEach(b => b.addEventListener("click", () => drawGear(+b.dataset.g)));
+      drawGear(0);
+    }
   }
 
   function pageForever() {
@@ -1004,7 +1159,7 @@
     else if (a === "dungeons") { section = "dungeons"; pageGuides(b, parts[2]); }
     else if (a === "characters") { section = "characters"; pageCharacters(b, parts[2]); }
     else if (a === "character" && b && parts[2]) { section = "characters"; pageCharacter(decodeURIComponent(b), decodeURIComponent(parts[2])); }
-    else if (a === "classic") { version = "classic"; section = ""; pageClassic(); }
+    else if (a === "classic") { version = "classic"; section = ""; pageClassic(b, parts[2]); }
     else if (a === "forever") { version = "forever"; section = ""; pageForever(); }
     else {
       const sec = D.SECTIONS.find(s => s.id === a && !s.ready);

@@ -93,6 +93,7 @@ window.WOW_API = (() => {
     tiers: () => siteData("tiers.json"),
     meta: () => siteData("meta.json"),
     guide: kind => siteData(`guide/${kind}.json`),
+    classicTalents: version => siteData(`classic/talents-${version}.json`),
     // Hand-written notes (leveling, dungeon and raid tips) ship with the site in notes/.
     notes: kind => { const k = `../notes/${kind}.json`; if (!siteCache.has(k)) siteCache.set(k, fetch(`notes/${kind}.json`, { cache: "no-cache" }).then(r => (r.ok ? r.json() : null)).catch(() => null)); return siteCache.get(k); },
     classes: () => get("/api/classes"),
