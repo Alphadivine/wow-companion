@@ -6,7 +6,7 @@ A personal World of Warcraft guide that puts talent trees, builds, tier lists, g
 
 - **Classes and specs**: every Retail class and spec, with icons and roles, loaded live from Blizzard's Battle.net API
 - **Talent trees**: the class tree, the spec's two hero trees and the spec tree for every spec, drawn the way they look in game (active, passive, choice and free nodes, with the lines between them)
-- **Talent details**: hover, tap or tab to any talent to read its description, cast time, range and cooldown; choice nodes show both options
+- **Talent details**: hover, tap or tab to any talent to read its description, cast time, range and cooldown; choice nodes show both options; slots that change by spec (dashed ring) list every version
 - **Find a talent**: search a tree by name or effect
 - **Jump back**: Home remembers the last spec you looked at
 - **Version switcher**: Retail, Classic Era and WoW Forever, with a live countdown to Forever's November 4 launch

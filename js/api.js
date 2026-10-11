@@ -2,7 +2,7 @@
 window.WOW_API = (() => {
   const base = String((window.WOW_CONFIG || {}).apiBase || "").replace(/\/+$/, "");
   const LOCAL_HOURS = 6;
-  const VERSION = "3"; // bump with the Worker's CACHE_VERSION so browsers drop old answers
+  const VERSION = "4"; // bump with the Worker's CACHE_VERSION so browsers drop old answers
   const PREFIX = `wowc:v${VERSION}:`;
 
   function readLocal(key) {

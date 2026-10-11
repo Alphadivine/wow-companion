@@ -204,7 +204,7 @@
               <span id="tcount" class="muted" aria-live="polite"></span>
             </div>
             <div class="legend" aria-hidden="true">
-              <span><i class="lg sq"></i>Active</span><span><i class="lg circ"></i>Passive</span><span><i class="lg oct"></i>Choice</span><span><i class="lg free"></i>Free</span>
+              <span><i class="lg sq"></i>Active</span><span><i class="lg circ"></i>Passive</span><span><i class="lg oct"></i>Choice</span><span><i class="lg free"></i>Free</span><span><i class="lg var"></i>Varies by spec</span>
             </div>
             <div id="treeHost" class="tree-host"></div>
           </section>

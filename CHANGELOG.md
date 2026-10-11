@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10 — Spec-dependent talent slots
+
+- Some tree slots hold a different talent depending on spec (for example Mass Eruption vs Mass Disintegrate in Scalecommander), and Blizzard sends every version at the same spot, so talents were drawn on top of each other
+- These slots now show as one node with a dashed ring; its details say "This slot changes by spec" and list each version
+- Exact duplicates Blizzard sends (like Frostfire Bolt twice) now show once
+- Search also finds talents inside these slots
+- Cache versions bumped so the merged trees load right away (redeploy the Worker to get this)
+
 ## 2026-10 — Fix specs loading without talent trees
 
 - When Blizzard briefly rate-limited requests, the Worker treated it as "no talent tree" and cached that empty answer for 24 hours, so many specs showed no trees and some showed no icon

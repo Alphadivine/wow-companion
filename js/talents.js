@@ -42,9 +42,9 @@ window.WOW_TALENTS = (() => {
     const buttons = order.map(i => {
       const n = nodes[i];
       const first = n.choices[0] || { name: "Talent" };
-      const names = n.choices.map(c => c.name).join(" or ");
+      const names = (n.variants ? n.variants.map(v => v.map(c => c.name).join(" or ")) : [n.choices.map(c => c.name).join(" or ")]).join(", or for other specs ");
       const label = `${names}. ${TYPE_LABEL[n.type] || "Talent"}${n.maxRank > 1 ? `, ${n.maxRank} ranks` : ""}${n.free ? ", granted free" : ""}`;
-      return `<button type="button" class="tnode ${nodeShape(n.type)}${n.free ? " free" : ""}" data-i="${i}"
+      return `<button type="button" class="tnode ${nodeShape(n.type)}${n.free ? " free" : ""}${n.variants ? " var" : ""}" data-i="${i}"
         style="left:${((pos[i].c + 0.5) / cols) * 100}%;top:${pos[i].r * ROW_H + ROW_H / 2}px" aria-label="${esc(label)}">
         <span class="tn-face">${esc(n.type === "CHOICE" && n.choices[1] ? initials(first.name)[0] + initials(n.choices[1].name)[0] : initials(first.name))}</span>
         ${n.maxRank > 1 ? `<span class="tn-rank">${n.maxRank}</span>` : ""}
@@ -80,7 +80,8 @@ window.WOW_TALENTS = (() => {
         let hits = 0;
         btns.forEach(b => {
           const n = nodes[+b.dataset.i];
-          const m = !!s && n.choices.some(c => c.name.toLowerCase().includes(s) || c.desc.toLowerCase().includes(s));
+          const all = n.variants ? n.variants.flat() : n.choices;
+          const m = !!s && all.some(c => c.name.toLowerCase().includes(s) || c.desc.toLowerCase().includes(s));
           if (m) hits++;
           b.classList.toggle("match", m);
           b.classList.toggle("dim", !!s && !m);
@@ -93,7 +94,7 @@ window.WOW_TALENTS = (() => {
 
   function details(n) {
     if (!n) return `<p class="muted">Hover over, tap or tab to a talent to read it.</p>`;
-    const meta = [TYPE_LABEL[n.type] || "Talent", n.maxRank > 1 ? `${n.maxRank} ranks` : "", n.free ? "Granted free" : ""].filter(Boolean);
+    const meta = [TYPE_LABEL[n.type] || "Talent", n.maxRank > 1 ? `${n.maxRank} ranks` : "", n.free ? "Granted free" : "", n.variants ? "Varies by spec" : ""].filter(Boolean);
     const opt = (c, i) => `
       <div class="tip-opt">
         ${n.choices.length > 1 ? `<span class="tip-or">${i === 0 ? "Option 1" : "Option 2"}</span>` : ""}
@@ -101,7 +102,11 @@ window.WOW_TALENTS = (() => {
         <div class="tip-stats">${[c.cast, c.range, c.cooldown, c.cost].filter(Boolean).map(v => `<span>${esc(v)}</span>`).join("")}</div>
         <p>${esc(c.desc) || "<span class='muted'>No description from Blizzard.</span>"}</p>
       </div>`;
-    return `<div class="tip-meta">${meta.map(m => `<span>${esc(m)}</span>`).join("")}</div>${n.choices.map(opt).join(`<div class="tip-div">or</div>`)}`;
+    const group = choices => choices.map(opt).join(`<div class="tip-div">or</div>`);
+    const body = n.variants
+      ? `<p class="tip-var">This slot changes by spec. You'll see one of these:</p>` + n.variants.map(group).join(`<div class="tip-div">other spec</div>`)
+      : group(n.choices);
+    return `<div class="tip-meta">${meta.map(m => `<span>${esc(m)}</span>`).join("")}</div>${body}`;
   }
 
   return { render, details, initials };
