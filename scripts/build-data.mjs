@@ -526,6 +526,7 @@ function raidTiers(specs, results) {
 // Blizzard's in-game Adventure Guide (the "journal") for the current raid and this season's Mythic+
 // dungeons: every boss ability, plus Blizzard's own Tanks / Healers / Damage Dealers overview bullets.
 
+const GUIDE_VERSION = 2; // bump when the guide format changes, so the next upload rebuilds it
 const normName = s => String(s || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]/g, "");
 
 // Strips the Adventure Guide's formatting codes and turns its bullet markers into plain bullets.
@@ -536,13 +537,31 @@ function journalText(t) {
 }
 
 function journalSections(list, depth = 0) {
+  const seen = new Set();
   return (list || []).filter(x => x && (x.title || x.body_text)).map(x => {
     const out = { title: name(x.title), text: journalText(name(x.body_text)) };
     if (x.spell?.id) out.spell = x.spell.id;
     const kids = depth < 6 ? journalSections(x.sections, depth + 1) : [];
     if (kids.length) out.sections = kids;
     return out;
+  }).filter(x => { const k = JSON.stringify(x); if (seen.has(k)) return false; seen.add(k); return true; }); // Blizzard repeats some groups
+}
+
+// Abilities in the Adventure Guide are links to spells; the in-game guide shows the spell's own text,
+// so fill in each empty ability from Blizzard's spell data.
+async function fillSpellText(sections) {
+  const empty = [];
+  const walk = list => { for (const x of list || []) { if (x.spell && !x.text) empty.push(x); walk(x.sections); } };
+  walk(sections);
+  const ids = [...new Set(empty.map(x => x.spell))];
+  const texts = new Map();
+  await pool(ids, 8, async id => {
+    const sp = await bnet("us", `/data/wow/spell/${id}?namespace=static-us&locale=en_US`).catch(() => null);
+    const t = journalText(name(sp?.description));
+    if (t) texts.set(id, t);
   });
+  for (const x of empty) if (texts.has(x.spell)) x.text = texts.get(x.spell);
+  return { asked: ids.length, filled: texts.size };
 }
 
 // Pulls the Tanks / Healers / Damage Dealers bullets out of an encounter's Overview section.
@@ -561,6 +580,7 @@ function journalRoles(sections) {
 
 function name(v) { return v == null ? "" : typeof v === "string" ? v : v.en_US || Object.values(v)[0] || ""; }
 
+const spellStats = { asked: 0, filled: 0 };
 async function journalInstance(id) {
   const ns = "namespace=static-us&locale=en_US";
   const [inst, media] = await Promise.all([
@@ -570,6 +590,8 @@ async function journalInstance(id) {
   const encounters = await pool(inst.encounters || [], 4, async e => {
     const enc = await bnet("us", `/data/wow/journal-encounter/${e.id}?${ns}`);
     const sections = journalSections(enc.sections);
+    const fill = await fillSpellText(sections);
+    spellStats.asked += fill.asked; spellStats.filled += fill.filled;
     return {
       id: enc.id, name: name(enc.name), description: journalText(name(enc.description)),
       creatures: (enc.creatures || []).map(c => name(c.name)).filter(Boolean),
@@ -578,7 +600,7 @@ async function journalInstance(id) {
     };
   });
   return {
-    id: inst.id, name: name(inst.name), type: inst.category?.type || "", description: journalText(name(inst.description)),
+    version: GUIDE_VERSION, id: inst.id, name: name(inst.name), type: inst.category?.type || "", description: journalText(name(inst.description)),
     image: (media?.assets || []).find(a => a.key === "tile")?.value || (media?.assets || [])[0]?.value || "",
     modes: (inst.modes || []).map(m => name(m.mode?.name)).filter(Boolean),
     encounters: encounters.filter(e => e && !e.__error)
@@ -603,7 +625,7 @@ async function buildGuide(tiers) {
     try { dungeons.push({ seasonName: d, ...(await journalInstance(hit.id)) }); }
     catch (e) { log(`  guide: ${d} failed: ${e.message}`); out.missing.push(d); }
   }
-  out.dungeons = { updated: new Date().toISOString(), season: tiers.mplus?.season?.name || "", instances: dungeons };
+  out.dungeons = { version: GUIDE_VERSION, updated: new Date().toISOString(), season: tiers.mplus?.season?.name || "", instances: dungeons };
   return out;
 }
 
@@ -612,7 +634,7 @@ async function writeGuide(tiers) {
     const g = await buildGuide(tiers);
     if (g.raid) await writeJson("guide/raid.json", g.raid);
     if (g.dungeons.instances.length) await writeJson("guide/dungeons.json", g.dungeons);
-    log(`guide: raid ${g.raid ? g.raid.encounters.length + " bosses" : "missing"}, ${g.dungeons.instances.length} dungeons${g.missing.length ? `; not found in the Adventure Guide: ${g.missing.join(", ")}` : ""}`);
+    log(`guide: raid ${g.raid ? g.raid.encounters.length + " bosses" : "missing"}, ${g.dungeons.instances.length} dungeons${g.missing.length ? `; not found in the Adventure Guide: ${g.missing.join(", ")}` : ""}; ability text filled for ${spellStats.filled}/${spellStats.asked} spells`);
   } catch (e) { log("guide failed:", e.message); }
 }
 
@@ -622,8 +644,9 @@ async function main() {
   const prevMeta = await copyLiveData();
   const refresh = String(env.REFRESH ?? "true") !== "false" || !prevMeta.updated;
   if (!refresh) {
-    // An upload keeps the live data, but builds the Adventure Guide files once if they don't exist yet.
-    if (!(prevMeta.files || []).includes("guide/raid.json") && env.BLIZZARD_CLIENT_ID) {
+    // An upload keeps the live data, but (re)builds the Adventure Guide files if they're missing or older.
+    const liveGuide = await fs.readFile(path.join(OUT, "guide/raid.json"), "utf8").then(JSON.parse).catch(() => null);
+    if ((!liveGuide || liveGuide.version !== GUIDE_VERSION) && env.BLIZZARD_CLIENT_ID) {
       bnetToken = await oauthToken(BNET_OAUTH, env.BLIZZARD_CLIENT_ID, env.BLIZZARD_CLIENT_SECRET);
       const liveTiers = await fs.readFile(path.join(OUT, "tiers.json"), "utf8").then(JSON.parse).catch(() => ({}));
       await writeGuide(liveTiers);

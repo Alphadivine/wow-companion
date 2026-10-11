@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10 — Phase 4 fixes from the first real Adventure Guide data
+
+- Ability entries now show their description: Blizzard's guide only links each ability to its spell, so the data job fills in the spell's text
+- Removed ability groups Blizzard lists twice
+- Raid bosses follow the Adventure Guide's order (Lost Explorers before Vashnik)
+- Ability names in Blizzard's text show in bold instead of [brackets]
+- An upload rebuilds the Adventure Guide files when their format changes
+
 ## 2026-10 — Phase 4: Leveling and M+ & Raid
 
 - New **Leveling** section: the route to 90, and for each class the best spec to level (plus an alternative), key abilities with icons, the one tip that matters, and a Midnight leveling talent import string (11 of 13 classes; Hunter and Death Knight link to the top build instead)

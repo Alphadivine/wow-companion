@@ -711,6 +711,8 @@
   /* ------------------------------ Leveling ------------------------------ */
   const slugOf = s => String(s || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const normOf = s => String(s || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]/g, "");
+  // Blizzard writes ability names in [brackets]; show them in bold instead.
+  const rich = t => esc(t).replace(/\[([^\]]{1,60})\]/g, '<strong class="sp">$1</strong>');
   const bullets = list => (list || []).length ? `<ul class="notes">${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
   const sourceList = (urls, checked) => (urls || []).length ? `<details class="sources"><summary>Sources${checked ? ` · checked ${esc(new Date(checked + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }))}` : ""}</summary><ul>${urls.map(u => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""))}</a></li>`).join("")}</ul></details>` : "";
   const copyButtons = root => root.querySelectorAll("[data-copy]").forEach(btn => btn.addEventListener("click", async () => {
@@ -818,10 +820,10 @@
     const show = k => role === "all" || role === k;
     const roleCols = [["tank", "Tank"], ["healer", "Healer"], ["dps", "DPS"]].filter(([k]) => show(k));
     const noteCols = note ? [...roleCols, ["everyone", "Everyone"]].filter(([k]) => (note[k] || []).length).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4>${bullets(note[k])}</div>`).join("") : "";
-    const blizzRoles = journal?.roles ? roleCols.filter(([k]) => journal.roles[k]).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4><p class="pre">${esc(journal.roles[k])}</p></div>`).join("") : "";
+    const blizzRoles = journal?.roles ? roleCols.filter(([k]) => journal.roles[k]).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4><p class="pre">${rich(journal.roles[k])}</p></div>`).join("") : "";
     const sec = (list, d = 0) => (list || []).map(x => `
       <details class="ab"${d === 0 ? " open" : ""}><summary>${x.spell ? `<span class="ab-ic" data-spell="${x.spell}"></span>` : ""}<span>${esc(x.title)}</span></summary>
-        ${x.text ? `<p class="pre">${esc(x.text)}</p>` : ""}${x.sections ? `<div class="ab-kids">${sec(x.sections, d + 1)}</div>` : ""}
+        ${x.text ? `<p class="pre">${rich(x.text)}</p>` : ""}${x.sections ? `<div class="ab-kids">${sec(x.sections, d + 1)}</div>` : ""}
       </details>`).join("");
     return `
       ${note?.summary || journal?.description ? `<p class="boss-sum">${esc(note?.summary || journal.description)}</p>` : ""}
@@ -847,8 +849,9 @@
     const [dNotes, rNotes, dJ, rJ] = await Promise.all([API.notes("dungeons"), API.notes("raid"), API.guide("dungeons"), API.guide("raid")]);
     const dungeons = (dNotes?.dungeons || []).map(n => ({ note: n, journal: dJ?.instances?.find(i => normOf(i.seasonName) === normOf(n.name) || normOf(i.name) === normOf(n.name)) }));
     const raidName = rNotes?.raid || rJ?.name || "Raid";
-    const bossOrder = (rNotes?.bosses || []).map(b => ({ note: b, journal: rJ?.encounters?.find(e => normOf(e.name) === normOf(b.name)) }));
-    for (const e of rJ?.encounters || []) if (!bossOrder.some(b => b.journal === e)) bossOrder.push({ note: null, journal: e });
+    // Blizzard's Adventure Guide order when it's loaded, otherwise the notes' order.
+    const bossOrder = (rJ?.encounters || []).map(e => ({ note: (rNotes?.bosses || []).find(b => normOf(b.name) === normOf(e.name)) || null, journal: e }));
+    for (const b of rNotes?.bosses || []) if (!bossOrder.some(x => x.note === b)) bossOrder.push({ note: b, journal: null });
 
     if (kind === "d" && which) return pageDungeon(dungeons.find(d => slugOf(d.note.name) === which), dNotes);
     if (kind === "raid" && which) return pageBoss(bossOrder, which, raidName, rNotes, rJ);
@@ -869,7 +872,7 @@
           <section class="panel raid-head">
             ${rJ?.image ? `<img class="raid-img" src="${esc(rJ.image)}" alt="" onerror="this.remove()">` : ""}
             <div><h2>${esc(raidName)}</h2>${rJ?.description ? `<p>${esc(rJ.description)}</p>` : ""}
-            ${(rNotes?.unverified || []).some(u => /order/i.test(u)) ? `<p class="muted small">Boss order follows Blizzard's announced list. The raid opens up after the first boss, so your kill order can differ.</p>` : ""}</div>
+            <p class="muted small">Bosses are listed in the Adventure Guide's order. The raid opens up after the first boss, so your kill order can differ.</p></div>
           </section>
           <ol class="boss-list">${bossOrder.map((b, i) => { const nm = b.note?.name || b.journal?.name; return `
             <li><a class="boss-row lift" href="#/dungeons/raid/${slugOf(nm)}"><span class="boss-n">${i + 1}</span><span><strong>${esc(nm)}</strong><small>${esc(b.note?.summary || b.journal?.description || "")}</small></span></a></li>`; }).join("")}</ol>

@@ -463,3 +463,4 @@ main:focus { outline: none; }
   .guide-bar { flex-direction: column; align-items: flex-start; }
   .hero-tile { display: none; }
 }
+.pre strong.sp { color: var(--gold-hi); font-weight: 700; }
