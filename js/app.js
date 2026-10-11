@@ -353,7 +353,7 @@
         <div class="gear-grid">${b.gear.map(slot => `
           <div class="gear-slot"><h3>${esc(slot.slot)}</h3>${slot.items.map((it, i) => `
             <div class="gear-item${i ? " alt" : ""}">
-              <span class="gear-ic q-${esc(it.quality)}">${it.icon ? `<img src="${esc(it.icon)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>
+              <span class="gear-ic q-${esc(it.quality)}">${it.icon ? `<img src="${esc(it.icon)}" alt="" loading="lazy" onerror="WOW_gearIconFallback(this)">` : ""}</span>
               <span class="gear-txt"><a class="q-${esc(it.quality)}" href="https://www.wowhead.com/item=${it.id}" target="_blank" rel="noopener">${esc(it.name)}</a>
                 <small>${it.ilvl ? `ilvl ${it.ilvl} · ` : ""}${it.pct}% use it${it.enchant ? ` · ${esc(it.enchant)}` : ""}${it.gems?.length ? ` · ${it.gems.map(esc).join(", ")}` : ""}</small></span>
             </div>`).join("")}</div>`).join("")}</div>
@@ -366,7 +366,7 @@
     main.innerHTML = `
       ${pageHero({ kicker: "Retail · Updated every morning", title: "Tier lists", sub: "Which specs top players bring right now: Mythic+ from Raider.IO's top runs, raid from Warcraft Logs' top parses." })}
       <div class="wrap stack"><div id="tierBody">${loading("Loading tier lists…")}</div></div>`;
-    const [tiers, cls] = await Promise.all([API.tiers(), API.classes().catch(() => null)]);
+    const [tiers, cls] = await Promise.all([API.tiers(), API.classes().catch(() => API.classes()).catch(() => null)]);
     const body = document.getElementById("tierBody");
     if (!body) return;
     if (!tiers || !tiers[which]) { body.innerHTML = `<section class="panel"><p>Tier lists haven't been built yet. They're created by the daily data job; check back after it runs.</p></section>`; return; }
@@ -383,7 +383,7 @@
       return `<section class="panel tier-role">
         <h2>${svgIcon(role.icon, role.color, 20, 2)} ${roleKey === "DAMAGE" ? "DPS" : role.label + "s"}</h2>
         ${groups.map(g => `<div class="tier-row"><span class="tier-letter t-${g.tier}">${g.tier}</span><div class="tier-specs">${g.specs.map(r => {
-          const info = specInfo.get(r.spec) || { name: `Spec ${r.spec}`, className: "", classId: 0 };
+          const info = specInfo.get(r.spec) || (r.name ? { name: r.name, className: r.className || "", classId: r.classId || 0 } : { name: `Spec ${r.spec}`, className: "", classId: 0 });
           const value = which === "mplus" ? `${r.share}%` : `${r.score}%`;
           return `<a class="tier-spec" href="#/spec/${r.spec}" style="--ic:${colorOf(info.classId)}"><span class="ts-name">${esc(info.name)} <span>${esc(info.className)}</span></span><span class="ts-val">${value}</span></a>`;
         }).join("")}</div></div>`).join("")}
@@ -482,3 +482,11 @@
   window.addEventListener("hashchange", route);
   route();
 })();
+
+// Blizzard's icon CDN is missing art for some new items; try Wowhead's copy, then give up quietly.
+window.WOW_gearIconFallback = img => {
+  const name = (img.getAttribute("src") || "").split("/").pop();
+  if (img.dataset.fb || !name) return img.remove();
+  img.dataset.fb = "1";
+  img.src = "https://wow.zamimg.com/images/wow/icons/large/" + name;
+};

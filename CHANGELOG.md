@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10 — Phase 2 fixes after the first real data run
+
+- Stat priority read 100% Versatility for every spec: Blizzard now sends crit, haste and mastery as `rating_normalized`, which the data job now reads
+- Best-in-slot icons were blank for many new items: icons now come from Wowhead's icon server, and the page falls back to it for today's data
+- Tier list rows could show "Spec 250" if the class list didn't load: spec names are now saved in the tier data and the class list is retried
+- Raid tier scores are rescaled so the top spec in each role is 100% (DPS had no S tier because scores were averaged across bosses)
+
 ## 2026-10 — Phase 2: top builds and tier lists
 
 - Spec pages now have a **Top build** panel with Mythic+ and Raid modes: the talents top players take are highlighted on the tree (others dimmed), with how many of them take each one; the hero tree in the build is marked on its tab

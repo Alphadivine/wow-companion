@@ -39,7 +39,8 @@ const PROFILE_REGIONS = new Set(["us", "eu", "kr", "tw"]);
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const slug = s => String(s || "").toLowerCase().replace(/['’]/g, "").replace(/\s+/g, "-");
-const iconUrl = icon => (icon ? `https://render.worldofwarcraft.com/us/icons/56/${String(icon).replace(/\.jpg$/, "")}.jpg` : "");
+// Wowhead's icon CDN has art for new items sooner than Blizzard's render CDN.
+const iconUrl = icon => (icon ? `https://wow.zamimg.com/images/wow/icons/large/${String(icon).replace(/\.jpg$/, "")}.jpg` : "");
 
 async function getJson(url, opts = {}, tries = 3) {
   for (let i = 0; ; i++) {
@@ -205,7 +206,8 @@ const SLOT_NAMES = { HEAD: "Head", NECK: "Neck", SHOULDER: "Shoulders", BACK: "B
 const SLOT_ORDER = Object.values(SLOT_NAMES);
 
 function statShares(stats) {
-  const r = v => (typeof v === "number" ? v : v?.rating || 0);
+  // Blizzard now sends rated stats as { rating_normalized, rating_bonus, value }; older data used { rating }.
+  const r = v => (typeof v === "number" ? v : v?.rating_normalized || v?.rating || 0);
   const crit = r(stats.melee_crit) || r(stats.spell_crit) || r(stats.ranged_crit);
   const haste = r(stats.melee_haste) || r(stats.spell_haste) || r(stats.ranged_haste);
   const mastery = r(stats.mastery);
@@ -314,7 +316,7 @@ function tierFromShares(specs, counts, runCount) {
   const slots = { TANK: 1, HEALER: 1, DAMAGE: 3 };
   const roles = {};
   for (const role of Object.keys(slots)) {
-    const list = specs.filter(s => s.role === role).map(s => ({ spec: s.id, count: counts.get(s.id) || 0, share: runCount ? (counts.get(s.id) || 0) / (runCount * slots[role]) : 0 }));
+    const list = specs.filter(s => s.role === role).map(s => ({ spec: s.id, name: s.name, className: s.className, classId: s.classId, count: counts.get(s.id) || 0, share: runCount ? (counts.get(s.id) || 0) / (runCount * slots[role]) : 0 }));
     const top = Math.max(...list.map(x => x.share), 0.0001);
     roles[role] = list.map(x => ({ ...x, share: Math.round(x.share * 1000) / 10, tier: x.share / top >= 0.6 ? "S" : x.share / top >= 0.3 ? "A" : x.share / top >= 0.12 ? "B" : "C" })).sort((a, b) => b.share - a.share);
   }
@@ -507,10 +509,12 @@ function raidTiers(specs, results) {
       if (!best) continue;
       for (const x of medians) if (x.m) scores.get(x.s.id).push(x.m / best);
     }
+    // Average across bosses, then rescale so the role's best spec overall is 100%.
+    const avg = new Map(inRole.map(s => { const l = scores.get(s.id); return [s.id, l.length ? l.reduce((a, b) => a + b, 0) / l.length : null]; }));
+    const topAvg = Math.max(...[...avg.values()].map(v => v || 0)) || 1;
     roles[role] = inRole.map(s => {
-      const list = scores.get(s.id);
-      const score = list.length ? list.reduce((a, b) => a + b, 0) / list.length : null;
-      return { spec: s.id, score: score == null ? null : Math.round(score * 1000) / 10, tier: score == null ? "?" : score >= 0.96 ? "S" : score >= 0.91 ? "A" : score >= 0.85 ? "B" : "C" };
+      const score = avg.get(s.id) == null ? null : avg.get(s.id) / topAvg;
+      return { spec: s.id, name: s.name, className: s.className, classId: s.classId, score: score == null ? null : Math.round(score * 1000) / 10, tier: score == null ? "?" : score >= 0.96 ? "S" : score >= 0.91 ? "A" : score >= 0.85 ? "B" : "C" };
     }).sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   }
   return roles;
