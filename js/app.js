@@ -708,6 +708,223 @@
     draw();
   }
 
+  /* ------------------------------ Leveling ------------------------------ */
+  const slugOf = s => String(s || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const normOf = s => String(s || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]/g, "");
+  const bullets = list => (list || []).length ? `<ul class="notes">${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const sourceList = (urls, checked) => (urls || []).length ? `<details class="sources"><summary>Sources${checked ? ` · checked ${esc(new Date(checked + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }))}` : ""}</summary><ul>${urls.map(u => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""))}</a></li>`).join("")}</ul></details>` : "";
+  const copyButtons = root => root.querySelectorAll("[data-copy]").forEach(btn => btn.addEventListener("click", async () => {
+    const inp = document.getElementById(btn.dataset.copy);
+    try { await navigator.clipboard.writeText(inp.value); } catch { inp.select(); document.execCommand && document.execCommand("copy"); }
+    const was = btn.textContent; btn.textContent = "Copied ✓"; setTimeout(() => { btn.textContent = was; }, 2000);
+  }));
+
+  async function pageLeveling(classId) {
+    document.title = "Leveling · WoW Companion";
+    main.innerHTML = `<div class="wrap">${loading("Loading leveling tips…")}</div>`;
+    const [notes, cls] = await Promise.all([API.notes("leveling"), API.classes().catch(() => null)]);
+    if (!notes) { main.innerHTML = `<div class="wrap stack"><div class="errbox"><p>Leveling tips didn't load. Try again in a moment.</p></div></div>`; return; }
+    const classes = cls?.classes || [];
+    const tipFor = c => notes.classes.find(x => normOf(x.class) === normOf(c.name));
+    if (classId) return pageLevelingClass(notes, classes.find(c => String(c.id) === String(classId)), tipFor);
+
+    main.innerHTML = `
+      ${pageHero({ kicker: "Retail · Midnight", title: "Leveling", sub: `The fastest way to level ${notes.levelCap ? `to ${notes.levelCap}` : ""}, and the spec, buttons and talents to use for each class.` })}
+      <div class="wrap stack">
+        <section class="panel" aria-labelledby="route-h">
+          <h2 id="route-h">Route to ${notes.levelCap || "max level"}</h2>
+          <ol class="route">${(notes.route || []).map(r => `<li>${esc(r)}</li>`).join("")}</ol>
+          ${sourceList(notes.routeSources, notes.checked)}
+        </section>
+        <section aria-labelledby="lv-classes">
+          <div class="sec-head"><h2 id="lv-classes">Pick a class</h2></div>
+          <div class="class-grid">${classes.map(c => { const t = tipFor(c); return `
+            <a class="class-tile lift" href="#/leveling/${c.id}" style="--ic:${colorOf(c.id)}">
+              <span class="sc-top">${iconFrame(c.icon, c.name[0], colorOf(c.id), "sm")}<span class="ct-name">${esc(c.name)}</span></span>
+              <span class="ct-specs">${t ? `Level as <strong>${esc(t.bestSpec?.name || "")}</strong>` : "Tips coming"}</span>
+            </a>`; }).join("")}</div>
+        </section>
+      </div>`;
+  }
+
+  async function pageLevelingClass(notes, c, tipFor) {
+    if (!c) { pageNotFound(); return; }
+    const t = tipFor(c);
+    const col = colorOf(c.id);
+    document.title = `${c.name} leveling · WoW Companion`;
+    let detail = null;
+    try { detail = await API.cls(c.id); } catch { /* icons are optional */ }
+    const specByName = n => detail?.specs?.find(s => normOf(s.name) === normOf(n));
+    const best = t && specByName(t.bestSpec?.name), alt = t && specByName(t.alternative?.name);
+    const talentSpec = t?.talents?.spec ? specByName(t.talents.spec.replace(/\s*\(.*\)$/, "")) : best;
+    main.innerHTML = `
+      <section class="hero spec-hero" style="--tint:${rgba(col, 0.28)};--ic:${col}">
+        ${moonArt(col)}
+        <div class="wrap hero-in">
+          ${iconFrame(c.icon, c.name[0], col, "xl")}
+          <div class="hero-text rise">
+            <a class="back" href="#/leveling">← All classes</a>
+            <span class="kicker" style="color:${col}">Leveling · Retail</span>
+            <h1>${esc(c.name)}</h1>
+            ${t ? `<p class="hero-sub">${esc(t.tip)}</p>` : ""}
+          </div>
+        </div>
+      </section>
+      <div class="wrap stack">
+        ${!t ? `<div class="errbox"><p>No leveling tips for ${esc(c.name)} yet.</p></div>` : `
+        <div class="split">
+          <section class="panel" aria-labelledby="best-h">
+            <h2 id="best-h">Best spec to level</h2>
+            <div class="lv-spec">${iconFrame(best?.icon, (t.bestSpec.name || "?")[0], col, "avatar")}<div><h3>${esc(t.bestSpec.name)}</h3><p>${esc(t.bestSpec.why)}</p>${best ? `<a href="#/spec/${best.id}">Talent tree and top build →</a>` : ""}</div></div>
+            ${t.alternative?.name ? `<div class="lv-spec alt">${iconFrame(alt?.icon, t.alternative.name[0], col, "sm")}<div><h3>Or ${esc(t.alternative.name)}</h3><p>${esc(t.alternative.why)}</p></div></div>` : ""}
+          </section>
+          <section class="panel" aria-labelledby="keys-h">
+            <h2 id="keys-h">Key abilities</h2>
+            <ul class="lv-abilities">${(t.keyAbilities || []).map((k, i) => `<li><span class="lv-ic" data-ability="${esc(k.name)}" id="lvic${i}">${esc(T.initials(k.name))}</span><span><strong>${esc(k.name)}</strong><small>${esc(k.why)}</small></span></li>`).join("")}</ul>
+          </section>
+        </div>
+        <section class="panel" aria-labelledby="lvt-h">
+          <h2 id="lvt-h">Leveling talents${t.talents?.spec ? ` · ${esc(t.talents.spec)}` : ""}</h2>
+          ${t.talents?.importString ? `
+            <div class="import"><label for="lvImport">Import string</label><input id="lvImport" readonly value="${esc(t.talents.importString)}"><button type="button" class="btn gold" data-copy="lvImport">Copy build</button></div>
+            <p class="muted small">In game: Talents → Import. ${t.talents.notes ? esc(t.talents.notes) : ""} ${t.talents.source ? `From <a href="${esc(t.talents.source)}" target="_blank" rel="noopener">this leveling guide</a>.` : ""}</p>`
+          : `<p>No current leveling import string was found for ${esc(t.talents?.spec || t.bestSpec.name)}. ${talentSpec ? `The <a href="#/spec/${talentSpec.id}">top ${esc(talentSpec.name)} build</a> works well once you have most talents.` : ""}</p>${t.talents?.notes ? `<p class="muted small">${esc(t.talents.notes)}</p>` : ""}`}
+        </section>
+        <section class="panel" aria-labelledby="lvr-h">
+          <h2 id="lvr-h">Route to ${notes.levelCap || "max level"}</h2>
+          <ol class="route">${(notes.route || []).map(r => `<li>${esc(r)}</li>`).join("")}</ol>
+        </section>
+        ${sourceList([...(t.sources || []), ...(notes.routeSources || [])].filter((u, i, a) => a.indexOf(u) === i), notes.checked)}`}
+      </div>`;
+    copyButtons(main);
+    // Ability icons: find each ability's spell in the class's talent trees.
+    if (t && detail?.specs?.length) {
+      const specs = await Promise.all(detail.specs.map(s => API.spec(s.id).catch(() => null)));
+      const bySpell = new Map();
+      for (const s of specs) for (const tr of s?.trees || []) for (const n of tr.nodes) for (const ch of n.variants ? n.variants.flat() : n.choices) if (ch.spellId && !bySpell.has(normOf(ch.name))) bySpell.set(normOf(ch.name), ch.spellId);
+      const want = [...main.querySelectorAll("[data-ability]")].map(el => ({ el, id: bySpell.get(normOf(el.dataset.ability)) })).filter(x => x.id);
+      const icons = await API.icons(want.map(x => x.id));
+      for (const { el, id } of want) if (icons[id] && el.isConnected) el.innerHTML = `<img src="${esc(icons[id])}" alt="" onerror="this.remove()">`;
+    }
+  }
+
+  /* ------------------------------ M+ & Raid ------------------------------ */
+  const ROLE_KEYS = [["all", "All"], ["tank", "Tank"], ["healer", "Healer"], ["dps", "DPS"]];
+  const roleSeg = current => `<div class="seg role-seg" role="group" aria-label="Show notes for">${ROLE_KEYS.map(([k, l]) => `<button type="button" data-role="${k}" aria-pressed="${k === current}">${l}</button>`).join("")}</div>`;
+  const wireRoleSeg = (root, redraw) => root.querySelectorAll(".role-seg button").forEach(b => b.addEventListener("click", () => { store.set("guideRole", b.dataset.role); redraw(); }));
+
+  // One boss: researched role notes, Blizzard's own role overview, then the full Adventure Guide breakdown.
+  function bossBlock(note, journal, role, opts = {}) {
+    const show = k => role === "all" || role === k;
+    const roleCols = [["tank", "Tank"], ["healer", "Healer"], ["dps", "DPS"]].filter(([k]) => show(k));
+    const noteCols = note ? [...roleCols, ["everyone", "Everyone"]].filter(([k]) => (note[k] || []).length).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4>${bullets(note[k])}</div>`).join("") : "";
+    const blizzRoles = journal?.roles ? roleCols.filter(([k]) => journal.roles[k]).map(([k, l]) => `<div class="role-col r-${k}"><h4>${l}</h4><p class="pre">${esc(journal.roles[k])}</p></div>`).join("") : "";
+    const sec = (list, d = 0) => (list || []).map(x => `
+      <details class="ab"${d === 0 ? " open" : ""}><summary>${x.spell ? `<span class="ab-ic" data-spell="${x.spell}"></span>` : ""}<span>${esc(x.title)}</span></summary>
+        ${x.text ? `<p class="pre">${esc(x.text)}</p>` : ""}${x.sections ? `<div class="ab-kids">${sec(x.sections, d + 1)}</div>` : ""}
+      </details>`).join("");
+    return `
+      ${note?.summary || journal?.description ? `<p class="boss-sum">${esc(note?.summary || journal.description)}</p>` : ""}
+      ${note?.keyAbilities?.length ? `<div class="chips">${note.keyAbilities.map(a => `<span class="chip">${esc(a)}</span>`).join("")}</div>` : ""}
+      ${noteCols ? `<div class="role-grid">${noteCols}</div>` : ""}
+      ${opts.raid && note && (note.heroic?.length || note.mythic?.length) ? `<div class="role-grid diff-grid">${note.heroic?.length ? `<div class="role-col"><h4>Heroic changes</h4>${bullets(note.heroic)}</div>` : ""}${note.mythic?.length ? `<div class="role-col"><h4>Mythic changes</h4>${bullets(note.mythic)}</div>` : ""}</div>` : ""}
+      ${opts.raid && note?.phases?.length ? `<div class="phases"><h4>Phases</h4><ol>${note.phases.map(p => `<li><strong>${esc(p.name)}</strong> ${esc(p.note)}</li>`).join("")}</ol></div>` : ""}
+      ${journal ? `<details class="journal"${opts.openJournal ? " open" : ""}><summary>Full ability breakdown <span class="muted small">from Blizzard's Adventure Guide</span></summary>
+        ${blizzRoles ? `<h4 class="j-h">Blizzard's role notes</h4><div class="role-grid">${blizzRoles}</div>` : ""}
+        <div class="abilities">${sec(journal.sections)}</div>
+      </details>` : `<p class="muted small">Blizzard's Adventure Guide for this boss hasn't been loaded yet; it arrives with the next daily data refresh.</p>`}`;
+  }
+  async function fillSpellIcons(root) {
+    const els = [...root.querySelectorAll("[data-spell]")];
+    if (!els.length) return;
+    const icons = await API.icons([...new Set(els.map(e => e.dataset.spell))]);
+    for (const e of els) if (icons[e.dataset.spell] && e.isConnected) e.innerHTML = `<img src="${esc(icons[e.dataset.spell])}" alt="" loading="lazy" onerror="this.remove()">`;
+  }
+
+  async function pageGuides(kind, which) {
+    document.title = "M+ & Raid · WoW Companion";
+    main.innerHTML = `<div class="wrap">${loading("Loading dungeons and raid…")}</div>`;
+    const [dNotes, rNotes, dJ, rJ] = await Promise.all([API.notes("dungeons"), API.notes("raid"), API.guide("dungeons"), API.guide("raid")]);
+    const dungeons = (dNotes?.dungeons || []).map(n => ({ note: n, journal: dJ?.instances?.find(i => normOf(i.seasonName) === normOf(n.name) || normOf(i.name) === normOf(n.name)) }));
+    const raidName = rNotes?.raid || rJ?.name || "Raid";
+    const bossOrder = (rNotes?.bosses || []).map(b => ({ note: b, journal: rJ?.encounters?.find(e => normOf(e.name) === normOf(b.name)) }));
+    for (const e of rJ?.encounters || []) if (!bossOrder.some(b => b.journal === e)) bossOrder.push({ note: null, journal: e });
+
+    if (kind === "d" && which) return pageDungeon(dungeons.find(d => slugOf(d.note.name) === which), dNotes);
+    if (kind === "raid" && which) return pageBoss(bossOrder, which, raidName, rNotes, rJ);
+
+    const tab = kind === "raid" ? "raid" : "mplus";
+    main.innerHTML = `
+      ${pageHero({ kicker: `Retail · ${esc(dNotes?.season || "This season")}`, title: "M+ & Raid", sub: "Every dungeon in this season's Mythic+ rotation and every boss in the current raid: role notes, must-kick casts and the full ability breakdown." })}
+      <div class="wrap stack">
+        <div class="seg" role="group" aria-label="Content"><a href="#/dungeons" aria-pressed="${tab === "mplus"}">Mythic+ dungeons</a><a href="#/dungeons/raid" aria-pressed="${tab === "raid"}">${esc(raidName)}</a></div>
+        ${tab === "mplus" ? `
+          <div class="guide-grid">${dungeons.map(d => `
+            <a class="guide-card lift" href="#/dungeons/d/${slugOf(d.note.name)}">
+              ${d.journal?.image ? `<img class="gc-img" src="${esc(d.journal.image)}" alt="" loading="lazy" onerror="this.remove()">` : `<span class="gc-img ph"></span>`}
+              <span class="gc-body"><strong>${esc(d.note.name)}</strong><small>${d.note.bosses.length} bosses · ${d.note.mustKick?.length || 0} must-kick casts</small><span class="gc-sum">${esc(d.note.summary)}</span></span>
+            </a>`).join("")}</div>
+          ${sourceList(null)}<p class="muted small">Notes checked ${esc(dNotes?.checked || "")} from Method, Icy Veins and Raider.IO; ability details come from Blizzard's Adventure Guide and update with each patch.</p>`
+        : `
+          <section class="panel raid-head">
+            ${rJ?.image ? `<img class="raid-img" src="${esc(rJ.image)}" alt="" onerror="this.remove()">` : ""}
+            <div><h2>${esc(raidName)}</h2>${rJ?.description ? `<p>${esc(rJ.description)}</p>` : ""}
+            ${(rNotes?.unverified || []).some(u => /order/i.test(u)) ? `<p class="muted small">Boss order follows Blizzard's announced list. The raid opens up after the first boss, so your kill order can differ.</p>` : ""}</div>
+          </section>
+          <ol class="boss-list">${bossOrder.map((b, i) => { const nm = b.note?.name || b.journal?.name; return `
+            <li><a class="boss-row lift" href="#/dungeons/raid/${slugOf(nm)}"><span class="boss-n">${i + 1}</span><span><strong>${esc(nm)}</strong><small>${esc(b.note?.summary || b.journal?.description || "")}</small></span></a></li>`; }).join("")}</ol>
+          <p class="muted small">Notes checked ${esc(rNotes?.checked || "")}; ability details come from Blizzard's Adventure Guide.</p>`}
+      </div>`;
+  }
+
+  function pageDungeon(d, dNotes) {
+    if (!d) { pageNotFound(); return; }
+    const n = d.note, j = d.journal;
+    document.title = `${n.name} · WoW Companion`;
+    const draw = () => {
+      const role = store.get("guideRole") || "all";
+      main.innerHTML = `
+        ${pageHero({ kicker: `Mythic+ · ${esc(dNotes?.season || "")}`, title: esc(n.name), sub: esc(n.summary), extra: j?.image ? `<img class="hero-tile rise2" src="${esc(j.image)}" alt="" onerror="this.remove()">` : "" })}
+        <div class="wrap stack">
+          <div class="guide-bar"><a class="back" href="#/dungeons">← All dungeons</a>${roleSeg(role)}</div>
+          <div class="split">
+            ${n.mustKick?.length ? `<section class="panel" aria-labelledby="kick-h"><h2 id="kick-h">Must-kick casts</h2>
+              <table class="kick"><thead><tr><th>Mob</th><th>Cast</th><th>Why</th></tr></thead><tbody>${n.mustKick.map(k => `<tr><td>${esc(k.mob)}</td><td><strong>${esc(k.cast)}</strong></td><td>${esc(k.why)}</td></tr>`).join("")}</tbody></table></section>` : ""}
+            ${n.dangerousPacks?.length ? `<section class="panel" aria-labelledby="pack-h"><h2 id="pack-h">Dangerous trash</h2>${bullets(n.dangerousPacks)}${n.affixNotes?.length ? `<h3 class="sub-h">Affixes</h3>${bullets(n.affixNotes)}` : ""}</section>` : ""}
+          </div>
+          ${n.bosses.map((b, i) => { const jb = j?.encounters?.find(e => normOf(e.name) === normOf(b.name) || normOf(e.name).includes(normOf(b.name)) || normOf(b.name).includes(normOf(e.name))) || (j?.encounters?.length === n.bosses.length ? j.encounters[i] : null); return `
+            <section class="panel boss" aria-labelledby="b${i}"><h2 id="b${i}"><span class="boss-n">${i + 1}</span>${esc(b.name)}</h2>${bossBlock(b, jb, role)}</section>`; }).join("")}
+          ${sourceList(n.sources, dNotes?.checked)}
+        </div>`;
+      wireRoleSeg(main, draw);
+      fillSpellIcons(main);
+    };
+    draw();
+  }
+
+  function pageBoss(order, which, raidName, rNotes, rJ) {
+    const i = order.findIndex(b => slugOf(b.note?.name || b.journal?.name) === which);
+    if (i < 0) { pageNotFound(); return; }
+    const b = order[i], nm = b.note?.name || b.journal?.name;
+    document.title = `${nm} · WoW Companion`;
+    const prev = order[i - 1], next = order[i + 1];
+    const link = (x, label) => x ? `<a href="#/dungeons/raid/${slugOf(x.note?.name || x.journal?.name)}">${label}</a>` : "<span></span>";
+    const draw = () => {
+      const role = store.get("guideRole") || "all";
+      main.innerHTML = `
+        ${pageHero({ kicker: `${esc(raidName)} · Boss ${i + 1} of ${order.length}`, title: esc(nm), sub: esc(b.note?.summary || b.journal?.description || "") })}
+        <div class="wrap stack">
+          <div class="guide-bar"><a class="back" href="#/dungeons/raid">← All bosses</a>${roleSeg(role)}</div>
+          <section class="panel boss">${bossBlock(b.note, b.journal, role, { raid: true, openJournal: !b.note })}</section>
+          <nav class="boss-nav" aria-label="Other bosses">${link(prev, `← ${esc(prev?.note?.name || prev?.journal?.name || "")}`)}${link(next, `${esc(next?.note?.name || next?.journal?.name || "")} →`)}</nav>
+          ${sourceList(b.note?.sources, rNotes?.checked)}
+        </div>`;
+      wireRoleSeg(main, draw);
+      fillSpellIcons(main);
+    };
+    draw();
+  }
+
   function pageComing(sec) {
     main.innerHTML = `
       ${pageHero({ kicker: `Retail · Coming in phase ${sec.phase}`, title: esc(sec.label), sub: esc(sec.blurb) })}
@@ -779,6 +996,8 @@
     else if (a === "specs") { section = "specs"; pageSpecs(/^\d+$/.test(b || "") ? b : null); }
     else if (a === "spec" && /^\d+$/.test(b || "")) { section = "specs"; pageSpec(b); }
     else if (a === "tiers") { section = "tiers"; pageTiers(b); }
+    else if (a === "leveling") { section = "leveling"; pageLeveling(/^\d+$/.test(b || "") ? b : null); }
+    else if (a === "dungeons") { section = "dungeons"; pageGuides(b, parts[2]); }
     else if (a === "characters") { section = "characters"; pageCharacters(b, parts[2]); }
     else if (a === "character" && b && parts[2]) { section = "characters"; pageCharacter(decodeURIComponent(b), decodeURIComponent(parts[2])); }
     else if (a === "classic") { version = "classic"; section = ""; pageClassic(); }

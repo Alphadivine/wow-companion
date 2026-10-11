@@ -522,11 +522,112 @@ function raidTiers(specs, results) {
 
 /* -------------------------------------------- main -------------------------------------------- */
 
+/* -------------------------------------- Adventure Guide -------------------------------------- */
+// Blizzard's in-game Adventure Guide (the "journal") for the current raid and this season's Mythic+
+// dungeons: every boss ability, plus Blizzard's own Tanks / Healers / Damage Dealers overview bullets.
+
+const normName = s => String(s || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]/g, "");
+
+// Strips the Adventure Guide's formatting codes and turns its bullet markers into plain bullets.
+function journalText(t) {
+  return String(t || "")
+    .replace(/\|c[0-9a-fA-F]{8}/g, "").replace(/\|r/g, "").replace(/\|T[^|]*\|t/g, "").replace(/\|H[^|]*\|h(.*?)\|h/g, "$1")
+    .replace(/\$bullet;?\s*/gi, "• ").replace(/\$\[[^\]]*\]/g, "").replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+}
+
+function journalSections(list, depth = 0) {
+  return (list || []).filter(x => x && (x.title || x.body_text)).map(x => {
+    const out = { title: name(x.title), text: journalText(name(x.body_text)) };
+    if (x.spell?.id) out.spell = x.spell.id;
+    const kids = depth < 6 ? journalSections(x.sections, depth + 1) : [];
+    if (kids.length) out.sections = kids;
+    return out;
+  });
+}
+
+// Pulls the Tanks / Healers / Damage Dealers bullets out of an encounter's Overview section.
+function journalRoles(sections) {
+  const roles = {};
+  const walk = list => { for (const x of list || []) {
+    const t = x.title.toLowerCase();
+    const key = /tank/.test(t) ? "tank" : /heal/.test(t) ? "healer" : /damage|dps/.test(t) ? "dps" : null;
+    if (key && !roles[key]) roles[key] = [x.text, ...(x.sections || []).map(k => `${k.title}${k.text ? ": " + k.text : ""}`)].filter(Boolean).join("\n");
+    walk(x.sections);
+  } };
+  const overview = sections.find(x => /overview/i.test(x.title));
+  walk(overview ? overview.sections : sections);
+  return roles;
+}
+
+function name(v) { return v == null ? "" : typeof v === "string" ? v : v.en_US || Object.values(v)[0] || ""; }
+
+async function journalInstance(id) {
+  const ns = "namespace=static-us&locale=en_US";
+  const [inst, media] = await Promise.all([
+    bnet("us", `/data/wow/journal-instance/${id}?${ns}`),
+    bnet("us", `/data/wow/media/journal-instance/${id}?${ns}`).catch(() => null)
+  ]);
+  const encounters = await pool(inst.encounters || [], 4, async e => {
+    const enc = await bnet("us", `/data/wow/journal-encounter/${e.id}?${ns}`);
+    const sections = journalSections(enc.sections);
+    return {
+      id: enc.id, name: name(enc.name), description: journalText(name(enc.description)),
+      creatures: (enc.creatures || []).map(c => name(c.name)).filter(Boolean),
+      roles: journalRoles(sections),
+      sections: sections.filter(x => !/overview/i.test(x.title))
+    };
+  });
+  return {
+    id: inst.id, name: name(inst.name), type: inst.category?.type || "", description: journalText(name(inst.description)),
+    image: (media?.assets || []).find(a => a.key === "tile")?.value || (media?.assets || [])[0]?.value || "",
+    modes: (inst.modes || []).map(m => name(m.mode?.name)).filter(Boolean),
+    encounters: encounters.filter(e => e && !e.__error)
+  };
+}
+
+async function buildGuide(tiers) {
+  const ns = "namespace=static-us&locale=en_US";
+  const index = await bnet("us", `/data/wow/journal-instance/index?${ns}`);
+  const all = (index.instances || []).map(i => ({ id: i.id, name: name(i.name) }));
+  const find = wanted => all.find(i => normName(i.name) === normName(wanted)) || all.find(i => normName(i.name).includes(normName(wanted)) || normName(wanted).includes(normName(i.name)));
+  const out = { missing: [] };
+  if (tiers.raid?.zone) {
+    const hit = find(tiers.raid.zone);
+    if (hit) out.raid = { updated: new Date().toISOString(), ...(await journalInstance(hit.id)) };
+    else out.missing.push(tiers.raid.zone);
+  }
+  const dungeons = [];
+  for (const d of tiers.mplus?.dungeons || []) {
+    const hit = find(d);
+    if (!hit) { out.missing.push(d); continue; }
+    try { dungeons.push({ seasonName: d, ...(await journalInstance(hit.id)) }); }
+    catch (e) { log(`  guide: ${d} failed: ${e.message}`); out.missing.push(d); }
+  }
+  out.dungeons = { updated: new Date().toISOString(), season: tiers.mplus?.season?.name || "", instances: dungeons };
+  return out;
+}
+
+async function writeGuide(tiers) {
+  try {
+    const g = await buildGuide(tiers);
+    if (g.raid) await writeJson("guide/raid.json", g.raid);
+    if (g.dungeons.instances.length) await writeJson("guide/dungeons.json", g.dungeons);
+    log(`guide: raid ${g.raid ? g.raid.encounters.length + " bosses" : "missing"}, ${g.dungeons.instances.length} dungeons${g.missing.length ? `; not found in the Adventure Guide: ${g.missing.join(", ")}` : ""}`);
+  } catch (e) { log("guide failed:", e.message); }
+}
+
+/* -------------------------------------------- main -------------------------------------------- */
 async function main() {
   await fs.mkdir(OUT, { recursive: true });
   const prevMeta = await copyLiveData();
   const refresh = String(env.REFRESH ?? "true") !== "false" || !prevMeta.updated;
   if (!refresh) {
+    // An upload keeps the live data, but builds the Adventure Guide files once if they don't exist yet.
+    if (!(prevMeta.files || []).includes("guide/raid.json") && env.BLIZZARD_CLIENT_ID) {
+      bnetToken = await oauthToken(BNET_OAUTH, env.BLIZZARD_CLIENT_ID, env.BLIZZARD_CLIENT_SECRET);
+      const liveTiers = await fs.readFile(path.join(OUT, "tiers.json"), "utf8").then(JSON.parse).catch(() => ({}));
+      await writeGuide(liveTiers);
+    }
     await writeJson("meta.json", { ...prevMeta, files: await listFiles() });
     log("REFRESH=false: kept the live data");
     return;
@@ -604,6 +705,8 @@ async function main() {
 
   // Gear lists are made last so every enchant and gem name learned along the way can be used.
   for (const b of pendingGear) if (typeof b.gear === "function") b.gear = b.gear();
+
+  await writeGuide(tiers);
 
   for (const s of specs) await writeJson(`builds/${s.id}.json`, { spec: s.id, name: s.name, className: s.className, role: s.role, ...builds.get(s.id) });
   await writeJson("tiers.json", tiers);

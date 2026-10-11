@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10 — Phase 4: Leveling and M+ & Raid
+
+- New **Leveling** section: the route to 90, and for each class the best spec to level (plus an alternative), key abilities with icons, the one tip that matters, and a Midnight leveling talent import string (11 of 13 classes; Hunter and Death Knight link to the top build instead)
+- New **M+ & Raid** section: the 8 dungeons in Midnight Season 2 with must-kick casts and dangerous trash, and all 8 bosses of The Venomous Abyss with Heroic and Mythic changes and phases
+- Every boss has tank, healer, DPS and everyone notes, and Blizzard's full ability breakdown and role notes from the Adventure Guide. A role switch (All / Tank / Healer / DPS) shows just your notes and is remembered
+- The daily data job now pulls the Adventure Guide for the current raid and this season's dungeons into `data/guide/`; an upload builds it once if it's missing
+- Hand-written notes live in `notes/` with their sources and the date they were checked
+
 ## 2026-10 — Phase 3 fixes from the first real sign-in
 
 - Talents that split their points across several entries (Balance's Ascendant Eclipses) now add up, instead of showing "1 → 4"
