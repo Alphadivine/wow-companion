@@ -1,0 +1,59 @@
+# Builds WoW Companion's game data and publishes the site to GitHub Pages.
+# - Every day at 4:12am Central: refresh builds and tier lists, then publish.
+# - Any push to main (your uploads): publish right away, reusing the current game data.
+# - Actions tab → "Build data and publish site" → Run workflow: refresh data on demand.
+name: Build data and publish site
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "12 9 * * *"
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: "Rebuild game data now (uses most of the hour's Warcraft Logs allowance)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build game data
+        run: node scripts/build-data.mjs
+        env:
+          BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+          BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}
+          WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
+          WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
+          SITE_URL: https://alphadivine.github.io/wow-companion/
+          REFRESH: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.refresh) }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
