@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10 — Remove empty placeholder talents
+
+- Blizzard includes empty placeholder nodes (no talent, no spell) at the top of most class trees and a few spec trees; they showed as a stray "T" node and are now left out
+- Cache versions bumped so trees rebuild without them (redeploy the Worker to get this)
+
 ## 2026-10 — Talent icons and tighter hero trees
 
 - Talent nodes now show their real spell icons from Blizzard instead of letters; choice nodes show both icons side by side, and the talent details panel shows the icon too
