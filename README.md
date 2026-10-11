@@ -4,6 +4,8 @@ A personal World of Warcraft guide that puts talent trees, builds, tier lists, g
 
 ## What works now
 
+- **Home** built around your main character: full character model, the three slots to upgrade first, your stats next to top players', this week's raid and Mythic+ dungeons with their art, and the top specs this week
+- **Spec pages** in each spec's own colors, with big tier cards and a Mythic+ / Raid / PvP switch that stays in view
 - **PvP**: tier lists for Solo Shuffle, 3v3, 2v2 and Battleground Blitz from Blizzard's US leaderboards, and a PvP mode on every spec page with top players' talents, PvP talents and stats
 - **Search** (press `/` or the search button): specs, classes, every Retail talent (opens its tree with the talent highlighted), dungeons, raid bosses, boss abilities, Classic talents and your own characters
 - **Classic**: Classic Era (level 60) and TBC Anniversary (level 70) for all nine classes. Each class has endgame talent builds drawn on the class's three trees with points on every talent, a leveling build with its level-by-level point order where the source has one, key abilities and talent order notes, and pre-raid best in slot (TBC: pre-raid and catch-up gear) with Wowhead item links

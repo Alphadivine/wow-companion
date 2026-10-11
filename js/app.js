@@ -20,6 +20,11 @@
   const versionNav = document.getElementById("versionNav");
   const sectionNav = document.getElementById("sectionNav");
   const menuBtn = document.getElementById("menuBtn");
+  // Sticky bars sit just under the header, whose height changes on small screens.
+  const topbar = document.querySelector(".topbar");
+  const setTopbarH = () => document.documentElement.style.setProperty("--topbar-h", topbar.offsetHeight + "px");
+  setTopbarH();
+  if ("ResizeObserver" in window) new ResizeObserver(setTopbarH).observe(topbar); else addEventListener("resize", setTopbarH);
   menuBtn.addEventListener("click", () => {
     const open = sectionNav.classList.toggle("open");
     menuBtn.setAttribute("aria-expanded", String(open));
@@ -51,7 +56,7 @@
     setTimeout(() => { const b = document.getElementById(id); if (b) b.addEventListener("click", retry); });
     return `<div class="errbox" role="alert"><p>${esc(msg)}</p>${err && err.setup ? "" : `<button class="btn" id="${id}" type="button">Try again</button>`}</div>`;
   }
-  function pageHero({ kicker, title, sub = "", tint = "rgba(230,196,106,0.18)", art = "", extra = "" }) {
+  function pageHero({ kicker, title, sub = "", tint = "rgba(143,120,255,0.16)", art = "", extra = "" }) {
     return `<section class="hero" style="--tint:${tint}">
       ${art}
       <div class="wrap hero-in">
@@ -65,52 +70,240 @@
     </section>`;
   }
   const moonArt = color => `<svg class="hero-art" viewBox="0 0 1440 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-      <circle cx="1130" cy="110" r="62" fill="#f3e3b5" opacity=".9"/><circle cx="1154" cy="96" r="56" fill="#121520"/>
+      <circle cx="1130" cy="110" r="62" fill="#f3e3b5" opacity=".9"/><circle cx="1154" cy="96" r="56" fill="#1a1433"/>
       <circle cx="1130" cy="110" r="104" fill="none" stroke="${color}" stroke-opacity=".3" stroke-width="2"/>
       <g fill="#f3e3b5"><circle class="twinkle" cx="960" cy="60" r="2"/><circle class="twinkle d1" cx="1290" cy="170" r="1.6"/><circle class="twinkle d2" cx="860" cy="130" r="1.4"/><circle class="twinkle d3" cx="1350" cy="50" r="2"/></g>
-      <path d="M0 300V230l120-60 90 40 140-90 120 70 110-50 160 100 130-60 150 80 120-70 140 60 160-90v200z" fill="#161a26"/>
-      <path d="M0 300v-40l160-30 140 25 180-50 150 40 170-35 160 40 140-25 170 35 170-25v65z" fill="#0c0e13"/>
+      <path d="M0 300V230l120-60 90 40 140-90 120 70 110-50 160 100 130-60 150 80 120-70 140 60 160-90v200z" fill="#1f1a3a"/>
+      <path d="M0 300v-40l160-30 140 25 180-50 150 40 170-35 160 40 140-25 170 35 170-25v65z" fill="#14122a"/>
     </svg>`;
   const daysUntil = iso => Math.max(0, Math.ceil((Date.parse(iso + "T00:00:00-06:00") - Date.now()) / 864e5));
 
   /* ------------------------------ pages ------------------------------ */
+  // Blizzard's full-body render sits next to the avatar with a different ending.
+  const renderOf = avatar => (avatar ? avatar.replace(/-avatar\.jpg(\?.*)?$/, "-main-raw.png") : "");
+  const mainKey = c => `${c.realmSlug}/${c.name}`;
+  // The character Home is built around: the one picked with "Make this my main", else the first max-level one.
+  function mainChar() {
+    const list = store.get("characters")?.list || [];
+    if (!list.length) return null;
+    const key = store.get("main") || store.get("autoMain");
+    const picked = key && list.find(c => mainKey(c) === key);
+    if (picked) return picked;
+    const max = Math.max(...list.map(c => c.level));
+    return list.find(c => c.level === max) || list[0];
+  }
+  // Two-color ring drawn behind a character or spec art.
+  const ringArt = (a, b) => `<svg class="ring-art" viewBox="0 0 600 600" aria-hidden="true">
+      <circle cx="300" cy="300" r="270" fill="none" stroke="${b}" stroke-opacity=".35" stroke-width="2"/>
+      <path d="M300 30A270 270 0 0 1 300 570" fill="none" stroke="${a}" stroke-width="6" stroke-linecap="round"/>
+      <path d="M300 570A270 270 0 0 1 300 30" fill="none" stroke="${b}" stroke-width="6" stroke-linecap="round"/>
+      <circle class="ring-fill" cx="300" cy="300" r="232"/></svg>`;
+  const tile = (value, label, dim) => `<div class="hh-tile"><strong${dim ? ' class="dim"' : ""}>${value}</strong><span>${label}</span></div>`;
+
   async function pageHome() {
+    document.title = "WoW Companion";
+    const me = mainChar();
     const last = store.get("lastSpec");
     main.innerHTML = `
-      ${pageHero({
-        kicker: "Retail · Midnight",
-        title: "Everything for your next session",
-        sub: "Pick a class and spec to see the build top players run, with an import string, stat priority and best in slot, or open your own characters to see what to upgrade.",
-        art: moonArt("#FF7C0A"),
-        extra: last ? `<a class="jump rise2" href="#/spec/${last.id}" style="--ic:${colorOf(last.classId)}">
-            ${iconFrame(last.icon, last.name[0], colorOf(last.classId), "sm")}
-            <span><small>Jump back to</small><strong>${esc(last.name)} ${esc(last.className)}</strong></span></a>` : ""
-      })}
-      <div class="wrap stack">
-        <section aria-labelledby="pick-h" class="rise2">
-          <div class="sec-head"><h2 id="pick-h">Pick a class</h2><a href="#/specs">All classes and specs →</a></div>
+      <section class="home-hero" id="homeHero" aria-label="${me ? "Your main" : "Sign in"}">
+        <div class="wrap">${loading(me ? `Loading ${me.name} from Blizzard…` : "Loading this week's top spec…")}</div>
+      </section>
+      <div id="homeStats"></div>
+      <div class="wrap stack home-stack">
+        <section aria-labelledby="week-h">
+          <h2 id="week-h" class="big-h">This week</h2>
+          <div id="homeWeek">${loading("Loading the raid and dungeons…")}</div>
+        </section>
+        <section aria-labelledby="top-h">
+          <div class="sec-head"><h2 id="top-h" class="big-h">Top specs this week</h2><a href="#/tiers">Full tier list</a></div>
+          <div id="homeTop">${loading("Loading tier lists…")}</div>
+        </section>
+        <section aria-labelledby="pick-h">
+          <div class="sec-head"><h2 id="pick-h" class="big-h">Pick a class</h2>${last ? `<a href="#/spec/${last.id}">Back to ${esc(last.name)} ${esc(last.className)}</a>` : `<a href="#/specs">All classes and specs</a>`}</div>
           <div id="homeClasses">${loading()}</div>
         </section>
-        <div class="split rise3">
-          <a class="panel locked lift home-chars" href="#/characters" aria-labelledby="chars-h">
-            <div class="panel-ic">${svgIcon("M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0", "#e6c46a", 26)}</div>
-            <div>
-              <h2 id="chars-h">My characters</h2>
-              <p>${(() => { const sv = store.get("characters"); return sv?.list?.length ? `${sv.list.length} characters loaded. Open one to compare its gear, talents and stats with the top build.` : "Sign in with Battle.net once to load your characters and compare each one with the top build."; })()}</p>
-              <span class="sc-go">${store.get("characters")?.list?.length ? "Open My Characters →" : "Sign in →"}</span>
-            </div>
-          </a>
-          <section class="panel" aria-labelledby="road-h">
-            <h2 id="road-h">Build progress</h2>
-            <ol class="road">${D.ROADMAP.map(r => `<li class="${r.done ? "done" : ""}"><span class="road-n">${r.done ? "✓" : r.phase}</span><span><strong>${esc(r.title)}</strong><small>${esc(r.text)}</small></span></li>`).join("")}</ol>
-          </section>
-        </div>
-        <a class="forever-strip lift rise3" href="#/forever">
+        <a class="forever-strip lift" href="#/forever">
           <span><small>Coming November 4 · ${daysUntil(D.FOREVER.launch)} days</small><strong>World of Warcraft: Forever</strong><em>See what's new in the third version of WoW.</em></span>
           <span class="btn gold">Explore Forever</span>
         </a>
+        <details class="panel road-panel">
+          <summary><h2>Build progress</h2></summary>
+          <ol class="road">${D.ROADMAP.map(r => `<li class="${r.done ? "done" : ""}"><span class="road-n">${r.done ? "✓" : r.phase}</span><span><strong>${esc(r.title)}</strong><small>${esc(r.text)}</small></span></li>`).join("")}</ol>
+        </details>
       </div>`;
     loadClassGrid(document.getElementById("homeClasses"), id => `#/specs/${id}`);
+
+    const [tiers, cls, rJ, dJ, rNotes, dNotes] = await Promise.all([
+      API.tiers(), API.classes().catch(() => null), API.guide("raid"), API.guide("dungeons"), API.notes("raid"), API.notes("dungeons")
+    ]);
+    const classIcon = new Map((cls?.classes || []).map(c => [c.id, c.icon]));
+    const zone = tiers?.raid?.zone?.name || tiers?.raid?.zone || rJ?.name || "";
+
+    // Your main (or the signed-out welcome), then the stats comparison.
+    let c = null, b = null, modeLabel = "Mythic+";
+    if (me) {
+      // A picked main is tried first; otherwise the first max-level character Blizzard can load.
+      const list = store.get("characters")?.list || [];
+      const max = Math.max(...list.map(x => x.level));
+      const tryList = [me, ...(store.get("main") ? [] : list.filter(x => x.level === max && x !== me && mainKey(x) !== mainKey(me)))].slice(0, 4);
+      for (const cand of tryList) {
+        try {
+          c = await API.character(cand.realmSlug, cand.name);
+          if (c) { if (cand !== me) store.set("autoMain", mainKey(cand)); break; }
+        } catch { c = null; }
+      }
+      if (c?.specId) {
+        const bf = await API.builds(c.specId);
+        const want = store.get("buildMode") === "raid" ? "raid" : "mplus";
+        b = bf?.[want]?.stats?.length ? bf[want] : bf?.mplus || bf?.raid || null;
+        modeLabel = b === bf?.raid ? "raid" : "Mythic+";
+      }
+    }
+    const bosses = (rJ?.encounters || []).map(e => e.name);
+    if (!bosses.length) for (const x of rNotes?.bosses || []) bosses.push(x.name);
+    const heroEl = document.getElementById("homeHero");
+    if (!heroEl) return;
+    if (c) heroEl.innerHTML = homeMain(c, b, zone, bosses.length);
+    else heroEl.innerHTML = await homeWelcome(tiers, me);
+    const statsEl = document.getElementById("homeStats");
+    if (c && b?.stats?.length && c.stats?.length) statsEl.innerHTML = homeStats(c, b, modeLabel);
+
+    // This week: the raid and the dungeon rotation, with Blizzard's art.
+    const weekEl = document.getElementById("homeWeek");
+    const myTier = c && tiers?.raid?.roles ? Object.values(tiers.raid.roles).flat().find(r => r.spec === c.specId) : null;
+    const raidLine = c
+      ? (() => { const r = raidSummary(c, zone); return r && r.text !== "Not started" ? `Your best so far: ${esc(r.text)}.` : "You haven't started it yet."; })()
+      : esc(rJ?.description ? rJ.description.split(/(?<=\.)\s/)[0] : "");
+    const dungeons = (dNotes?.dungeons || []).map(n => ({ n, j: dJ?.instances?.find(i => normOf(i.seasonName) === normOf(n.name) || normOf(i.name) === normOf(n.name)) }));
+    weekEl.innerHTML = `
+      ${zone ? `<a class="raid-feature" href="#/dungeons/raid">
+        ${rJ?.image ? `<img src="${esc(rJ.image)}" alt="" onerror="this.remove()">` : ""}
+        <span class="rf-in">
+          <span class="rf-k">Current raid</span>
+          <strong class="rf-name">${esc(zone)}</strong>
+          <span class="rf-line">${raidLine}${myTier && myTier.tier !== "?" ? ` ${esc(c.specName)} is ${myTier.tier} tier here.` : ""}</span>
+          ${bosses.length ? `<ol class="rf-bosses">${bosses.map((x, i) => `<li><span>${i + 1}</span>${esc(x)}</li>`).join("")}</ol>` : ""}
+        </span>
+      </a>` : ""}
+      ${dungeons.length ? `
+      <div class="sec-head week-sub"><h3>Mythic+ dungeons this season</h3><a href="#/dungeons">All dungeon guides</a></div>
+      <div class="dg-tiles">${dungeons.map(d => `
+        <a class="dg-tile" href="#/dungeons/d/${slugOf(d.n.name)}">
+          ${d.j?.image ? `<img src="${esc(d.j.image)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
+          <span>${esc(d.n.name)}</span>
+        </a>`).join("")}</div>` : ""}`;
+    if (!zone && !dungeons.length) weekEl.innerHTML = `<p class="muted">This week's raid and dungeons haven't loaded. Try again in a moment.</p>`;
+
+    // Top specs: raid across every role, Mythic+ damage dealers.
+    const topEl = document.getElementById("homeTop");
+    const mineId = c?.specId;
+    const topList = (rows, val, title, key) => {
+      const pick = rows.slice(0, 4);
+      const mine = mineId && !pick.some(r => r.spec === mineId) ? rows.find(r => r.spec === mineId) : null;
+      if (mine) pick.push(mine);
+      const max = Math.max(1, ...pick.map(val));
+      return `<section class="top-card" aria-labelledby="tc-${key}">
+        <h3 id="tc-${key}">${title}</h3>
+        ${pick.map(r => { const col = colorOf(r.classId); const v = val(r); return `
+          <a class="top-row${r.spec === mineId ? " mine" : ""}" href="#/spec/${r.spec}" style="--ic:${col}">
+            ${iconFrame(classIcon.get(r.classId), (r.name || "?")[0], col, "sm")}
+            <span class="tr-body"><span class="tr-name">${esc(r.name || "")} ${esc(r.className || "")}${r.spec === mineId ? " (your main)" : ""}</span>
+              <span class="tr-bar"><span style="width:${Math.max(4, v / max * 100)}%"></span></span></span>
+            <span class="tr-val">${key === "mplus" ? `${v}%` : v}</span>
+          </a>`; }).join("")}
+      </section>`;
+    };
+    const raidRows = Object.values(tiers?.raid?.roles || {}).flat().filter(r => r.score != null).sort((a, z) => z.score - a.score);
+    const mRows = (tiers?.mplus?.roles?.DAMAGE || []).filter(r => r.share != null).sort((a, z) => z.share - a.share);
+    topEl.innerHTML = raidRows.length || mRows.length
+      ? `<div class="top-grid">${raidRows.length ? topList(raidRows, r => r.score, "Raid", "raid") : ""}${mRows.length ? topList(mRows, r => r.share, "Mythic+ damage", "mplus") : ""}</div>
+         <p class="muted small">Raid scores compare each spec with the best in its role (100). Mythic+ is the share of damage slots in the top runs.</p>`
+      : `<p class="muted">Tier lists haven't been built yet. They're created by the daily data job.</p>`;
+  }
+
+  function homeMain(c, b, zone, bossCount) {
+    const col = colorOf(c.classId);
+    const raid = raidSummary(c, zone);
+    const low = c.items.filter(i => i.ilvl).slice().sort((a, z) => a.ilvl - z.ilvl).slice(0, 3);
+    const ups = low.map(it => {
+      const slot = b?.gear?.find(g => g.slot === (TOP_SLOT[it.slot] || it.slot));
+      const top = slot?.items?.[0];
+      const tip = !top ? "Any higher item level piece is an upgrade"
+        : slot.items.some(t => t.id === it.id) ? "Top players use this too. Look for a higher item level copy"
+        : `Top players use ${top.name}`;
+      return `<li>
+        <span class="gear-ic q-${esc(it.quality)}">${it.icon ? `<img src="${esc(it.icon)}" alt="" loading="lazy" onerror="WOW_gearIconFallback(this)">` : ""}</span>
+        <span class="up-txt"><strong>${esc(it.slot)}: ${esc(it.name)}</strong><small>${esc(tip)}</small></span>
+        <span class="up-ilvl">${it.ilvl}</span>
+      </li>`;
+    }).join("");
+    const render = renderOf(c.avatar);
+    return `<div class="wrap hh-grid" style="--ic:${col}">
+      <div class="hh-text rise">
+        <p class="hh-kicker">Your main <a href="#/characters">Change</a></p>
+        <h1 class="hh-name">${esc(c.name)}</h1>
+        <p class="hh-line">Level ${c.level} ${esc(c.race)} ${esc(c.specName || "")} ${esc(c.className)} on ${esc(c.realm)}</p>
+        ${c.guild ? `<p class="hh-guild">&lt;${esc(c.guild)}&gt;</p>` : ""}
+        <div class="hh-tiles">
+          ${tile(c.ilvl, "Item level")}
+          ${c.mplus ? tile(`<span style="color:${esc(c.mplus.color || "inherit")}">${c.mplus.rating}</span>`, "Mythic+ rating") : tile("0", "Mythic+ rating", true)}
+          ${raid ? (raid.text === "Not started"
+            ? tile(`0/${bossCount || "?"}`, esc(raid.raid), true)
+            : tile(esc(raid.text.split(" ").pop()), `${esc(raid.raid)}, ${esc(raid.text.split(" ").slice(0, -1).join(" "))}`)) : ""}
+        </div>
+        ${ups ? `<div class="hh-up"><h2>Upgrade these first</h2><ul>${ups}</ul></div>` : ""}
+        <div class="hh-actions">
+          <a class="btn class" href="${charHref(c)}">Open my character</a>
+          ${c.specId ? `<a class="btn" href="#/spec/${c.specId}">${esc(c.specName || "Spec")} build</a>` : ""}
+        </div>
+      </div>
+      <div class="hh-art">
+        ${ringArt(col, "#8fb3ff")}
+        ${render ? `<img class="hh-render" src="${esc(render)}" alt="${esc(c.name)}'s character model" onerror="this.closest('.hh-art').classList.add('no-render')">` : ""}
+        ${c.avatar ? `<img class="hh-avatar" src="${esc(c.avatar)}" alt="" onerror="this.remove()">` : ""}
+      </div>
+    </div>`;
+  }
+
+  function homeStats(c, b, modeLabel) {
+    const col = colorOf(c.classId);
+    const rows = b.stats.map(t => ({ stat: t.stat, top: t.pct, mine: c.stats.find(s => s.stat === t.stat)?.pct ?? 0 }));
+    const gap = rows.slice().sort((a, z) => (z.top - z.mine) - (a.top - a.mine))[0];
+    const note = gap && gap.top - gap.mine >= 6
+      ? `Top ${modeLabel} ${esc(c.specName)} players lean on ${esc(gap.stat)}. Yours is ${gap.mine}% and theirs is ${gap.top}%, so favor ${esc(gap.stat)} when two items are close.`
+      : `Your secondary stats are close to what top ${modeLabel} ${esc(c.specName)} players run.`;
+    const max = Math.max(1, ...rows.flatMap(r => [r.top, r.mine]));
+    return `<section class="wrap home-cmp" aria-labelledby="cmp-h" style="--ic:${col}">
+      <div><h2 id="cmp-h" class="big-h">Your stats against top ${esc(c.specName)} players</h2><p class="muted">${note}</p></div>
+      <ol class="cmp-bars">${rows.map(r => `
+        <li><strong>${esc(r.stat)}</strong>
+          <span class="cb"><span class="cb-me" style="width:${r.mine / max * 78}%"></span><small>You ${r.mine}%</small></span>
+          <span class="cb"><span class="cb-top" style="width:${r.top / max * 78}%"></span><small>Top ${r.top}%</small></span></li>`).join("")}</ol>
+    </section>`;
+  }
+
+  async function homeWelcome(tiers, me) {
+    const best = Object.values(tiers?.raid?.roles || {}).flat().filter(r => r.score != null).sort((a, z) => z.score - a.score)[0];
+    let s = null;
+    if (best) { try { s = await API.spec(best.spec); } catch { s = null; } }
+    const col = best ? colorOf(best.classId) : "var(--gold)";
+    return `<div class="wrap hh-grid welcome">
+      <div class="hh-text rise">
+        <h1 class="hh-name">${me ? `Couldn't load ${esc(me.name)}` : "Put your main here"}</h1>
+        <p class="hh-line">${me ? "Blizzard didn't send your character just now. Open My Characters to try again, or sign in again if it moved realms." : "Sign in with Battle.net once and Home shows your main character, the three items to upgrade first and how your stats compare with top players."}</p>
+        <div class="hh-actions">${me ? `<a class="btn gold" href="#/characters">Open My Characters</a>` : signInButton()}</div>
+        ${me ? "" : `<p class="muted small">WoW Companion only asks for your character list and never sees your password.</p>`}
+      </div>
+      ${best ? `<a class="hh-spec" href="#/spec/${best.spec}" style="--ic:${col}">
+        ${ringArt(col, "#8fb3ff")}
+        <span class="hs-in">
+          ${iconFrame(s?.icon, (best.name || "?")[0], col, "xl")}
+          <span class="hs-k">Top raid spec this week</span>
+          <strong>${esc(best.name || s?.name || "")} ${esc(best.className || "")}</strong>
+          <span class="hs-tier t-${esc(best.tier)}">${esc(best.tier)} tier, score ${best.score}</span>
+        </span>
+      </a>` : ""}
+    </div>`;
   }
 
   async function loadClassGrid(el, hrefFor, activeId) {
@@ -184,41 +377,49 @@
     ].filter(Boolean);
     const saved = store.get("buildMode");
     let mode = modes.find(m => m.id === saved) || modes[0] || null;
-    const tierBadge = (key, label) => {
+    const ac = D.SPEC_ACCENT[s.id] || col;
+    // Big tier cards: Mythic+ and raid tiers for this spec's role, plus the best PvP rating seen.
+    const tierCard = (key, label) => {
       const row = tiers?.[key]?.roles?.[s.role]?.find(r => r.spec === s.id);
-      return row && row.tier !== "?" ? `<a class="tier-badge t-${row.tier}" href="#/tiers/${key}">${label} tier <strong>${row.tier}</strong></a>` : "";
+      if (!row || row.tier === "?") return "";
+      const sub = key === "mplus" ? `${row.share}% of top ${s.role === "DAMAGE" ? "damage" : s.role === "TANK" ? "tank" : "healer"} slots` : `Score ${row.score} of 100`;
+      return `<a class="tier-card t-${row.tier}${row.tier === "S" ? " top" : ""}" href="#/tiers/${key}"><span class="tc-big">${row.tier}</span><span><strong>${label} tier</strong><small>${sub}</small></span></a>`;
     };
+    const pvpCard = buildFile?.pvp?.topRating ? `<a class="tier-card" href="#/pvp"><span class="tc-big num">${buildFile.pvp.topRating}</span><span><strong>Top PvP rating</strong><small>${esc(buildFile.pvp.bracket || "This season")}</small></span></a>` : "";
 
     main.innerHTML = `
-      <section class="hero spec-hero" style="--tint:${rgba(col, 0.28)};--ic:${col}">
-        ${moonArt(col)}
-        <div class="wrap hero-in">
-          ${iconFrame(s.icon, s.name[0], col, "xl")}
-          <div class="hero-text rise">
-            <span class="kicker" style="color:${col}">${esc(s.class.name)} · ${esc(s.roleName || role.label)}${s.primaryStat ? ` · ${esc(s.primaryStat)}` : ""}</span>
-            <h1>${esc(s.name)} ${esc(s.class.name)}</h1>
-            <p class="hero-sub">${esc(s.description)}</p>
-            <div class="badges">${tierBadge("mplus", "Mythic+")}${tierBadge("raid", "Raid")}</div>
+      <div class="spec-page" style="--ic:${col};--ac:${ac}">
+      <section class="spec-hero2" aria-labelledby="spec-title">
+        ${ringArt(ac, col)}
+        <div class="wrap sh-in">
+          <a class="back" href="#/specs/${s.class.id}">${esc(s.class.name)} specs</a>
+          <div class="sh-title rise">
+            ${iconFrame(s.icon, s.name[0], ac, "xl")}
+            <div><h1 id="spec-title">${esc(s.name)}</h1>
+            <p class="sh-class">${esc(s.class.name)}, ${esc((s.roleName || role.label).toLowerCase())}${s.primaryStat ? `, ${esc(s.primaryStat)}` : ""}</p></div>
           </div>
-        </div>
-        <div class="wrap">
-          <div class="tabs" role="tablist" aria-label="Talent trees">
-            ${trees.map((t, i) => `<button type="button" role="tab" id="tab${i}" aria-controls="treePanel" aria-selected="false" data-t="${i}">
-              <small>${kindLabel[t.kind] || ""}<span class="in-build" hidden> · in build</span></small>${esc(t.name)}</button>`).join("")}
-          </div>
+          <p class="hero-sub">${esc(s.description)}</p>
+          <div class="sh-cards">${tierCard("raid", "Raid")}${tierCard("mplus", "Mythic+")}${pvpCard}</div>
         </div>
       </section>
-      <div class="wrap stack">
-        <section class="panel build-bar" aria-labelledby="build-h">
-          <div class="build-top">
-            <h2 id="build-h">Top build</h2>
-            <div class="seg" role="group" aria-label="Build to show">
-              ${modes.map(m => `<button type="button" data-mode="${m.id}">${m.label}</button>`).join("")}
-              <button type="button" data-mode="none">Tree only</button>
-            </div>
+      <div class="mode-bar">
+        <div class="wrap mb-in">
+          <div class="seg spec-seg" role="group" aria-label="Build to show">
+            ${modes.map(m => `<button type="button" data-mode="${m.id}">${m.label}</button>`).join("")}
+            <button type="button" data-mode="none">Tree only</button>
           </div>
+          <p class="mb-src" id="modeSrc"></p>
+        </div>
+      </div>
+      <div class="wrap stack">
+        <section class="build-bar" aria-labelledby="build-h">
+          <h2 id="build-h" class="big-h">Talents</h2>
           <div id="buildInfo"></div>
         </section>
+        <div class="tabs spec-tabs" role="tablist" aria-label="Talent trees">
+          ${trees.map((t, i) => `<button type="button" role="tab" id="tab${i}" aria-controls="treePanel" aria-selected="false" data-t="${i}">
+            <small>${kindLabel[t.kind] || ""}<span class="in-build" hidden> · in build</span></small>${esc(t.name)}</button>`).join("")}
+        </div>
         ${s.treeMissing || !trees.length ? `<div class="errbox"><p>Blizzard didn't return a talent tree for this spec yet. It usually appears within a day of a patch.</p></div>` : `
         <div class="tree-layout">
           <section class="panel tree-panel" id="treePanel" role="tabpanel" aria-labelledby="tab0">
@@ -238,6 +439,7 @@
           </aside>
         </div>`}
         <div id="buildExtras"></div>
+      </div>
       </div>`;
 
     const buildInfo = document.getElementById("buildInfo");
@@ -249,11 +451,12 @@
     const renderBuildInfo = () => {
       segBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === (mode ? mode.id : "none"))));
       if (!modes.length) {
+        document.getElementById("modeSrc").textContent = "No top build yet";
         buildInfo.innerHTML = `<p class="muted">Build data for this spec hasn't been collected yet. It refreshes every morning from top Mythic+ runs and raid logs.</p>`;
         extrasEl.innerHTML = "";
         return;
       }
-      if (!mode) { buildInfo.innerHTML = `<p class="muted">Showing the plain talent tree. Pick Mythic+ or Raid to highlight what top players take.</p>`; extrasEl.innerHTML = ""; return; }
+      if (!mode) { document.getElementById("modeSrc").textContent = "Plain talent tree"; buildInfo.innerHTML = `<p class="muted">Showing the plain talent tree. Pick Mythic+ or Raid to highlight what top players take.</p>`; extrasEl.innerHTML = ""; return; }
       const b = mode.b;
       const src = mode.id === "mplus"
         ? `${b.sample} top Mythic+ players this season${b.topKey ? `, keys up to +${b.topKey}` : ""}${b.source === "Warcraft Logs" ? " (from Warcraft Logs, since few top Raider.IO runs had this spec)" : ""}`
@@ -268,14 +471,15 @@
           </div>
           <p class="muted small">From ${esc(b.player.name)} (${esc(b.player.realm)}, ${esc(String(b.player.region).toUpperCase())}${b.player.rating ? `, ${b.player.rating} rating` : ""})${b.player.differs ? `, whose loadout differs from the common build by ${b.player.differs} talent${b.player.differs === 1 ? "" : "s"}` : ", an exact match"}. In game: Talents → Import.</p>`
         : `<p class="muted small">No top player's saved loadout matches this build closely enough to share an import string today, so the build is shown on the tree only.</p>`;
-      buildInfo.innerHTML = `<p class="build-src">Based on ${src}. Updated ${new Date(b.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.</p>${importBlock}`;
+      document.getElementById("modeSrc").innerHTML = `Built from ${src}`;
+      buildInfo.innerHTML = `<p class="build-src">Build updated ${new Date(b.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.</p>${importBlock}`;
       const copy = document.getElementById("copyBtn");
       if (copy) copy.addEventListener("click", async () => {
         const inp = document.getElementById("importStr");
         try { await navigator.clipboard.writeText(inp.value); } catch { inp.select(); document.execCommand && document.execCommand("copy"); }
         copy.textContent = "Copied ✓"; setTimeout(() => { copy.textContent = "Copy build"; }, 2000);
       });
-      extrasEl.innerHTML = buildExtras(b, col);
+      extrasEl.innerHTML = buildExtras(b, col, ac);
       fillSpellIcons(extrasEl);
     };
 
@@ -286,7 +490,7 @@
       if (!panel) return;
       panel.setAttribute("aria-labelledby", "tab" + i);
       panel.classList.toggle("has-build", !!buildMap);
-      view = T.render(host, trees[i], { color: col, icons: API.icons, build: buildMap, onSelect: (n, picked, pick) => {
+      view = T.render(host, trees[i], { color: ac, icons: API.icons, build: buildMap, onSelect: (n, picked, pick) => {
         tipBody.innerHTML = T.details(n, pick, !!buildMap);
         if (picked && narrow.matches) tipPanel.classList.add("sheet-open");
       } });
@@ -350,37 +554,40 @@
     }
   }
 
-  // Stat priority and best-in-slot panels for a build.
-  function buildExtras(b, col) {
-    const pvpT = b.pvpTalents?.length ? `
-      <section class="panel" aria-labelledby="pvpt-h">
-        <h2 id="pvpt-h">PvP talents</h2>
-        <p class="muted small">How many of the same top players run each PvP talent. You pick three in game.</p>
-        <ol class="stat-list pvp-talents">${b.pvpTalents.map((x, i) => `
-          <li><span class="stat-rank${i < 3 ? "" : " dim"}">${i + 1}</span><span class="stat-body"><span class="stat-row"><strong><span class="pvp-ic" data-spell="${x.spell || ""}"></span>${esc(x.name)}</strong><span>${x.pct}%</span></span>
-          <span class="stat-bar"><span style="width:${Math.min(100, x.pct)}%;background:${col}"></span></span></span></li>`).join("")}</ol>
-      </section>` : "";
+  // Stat priority, best in slot and PvP talents for a build, in the spec's colors.
+  function buildExtras(b, col, ac = col) {
+    const segCols = [ac, col, `color-mix(in srgb, ${ac} 40%, #2a2a5a)`, "#2e3a66"];
     const stats = b.stats?.length ? `
-      <section class="panel" aria-labelledby="stat-h">
-        <h2 id="stat-h">Stat priority</h2>
-        <p class="muted small">Share of secondary stats on top players' characters.</p>
-        <ol class="stat-list">${b.stats.map((x, i) => `
-          <li><span class="stat-rank">${i + 1}</span><span class="stat-body"><span class="stat-row"><strong>${esc(x.stat)}</strong><span>${x.pct}%</span></span>
-          <span class="stat-bar"><span style="width:${Math.min(100, x.pct * 2)}%;background:${col}"></span></span></span></li>`).join("")}</ol>
+      <section class="extra-sec" aria-labelledby="stat-h">
+        <h2 id="stat-h" class="big-h">Stat priority</h2>
+        <div class="stat-strip" role="img" aria-label="${b.stats.map(x => `${esc(x.stat)} ${x.pct}%`).join(", ")}">${b.stats.map((x, i) => `
+          <span class="ss-seg${x.pct < 9 ? " thin" : ""}" style="flex:${Math.max(x.pct, 3)};background:${segCols[i] || segCols[3]}" data-dark="${i < 2 ? 1 : 0}"><strong>${esc(x.pct < 9 ? x.stat.split(" ")[0].slice(0, 4) : x.stat)}</strong><small>${x.pct}%</small></span>`).join("")}
+        </div>
+        <p class="muted">${b.stats.map(x => esc(x.stat)).join(", then ")}. Share of secondary stats on top players' characters.</p>
       </section>` : "";
     const gear = b.gear?.length ? `
-      <section class="panel gear-panel" aria-labelledby="gear-h">
-        <h2 id="gear-h">Best in slot</h2>
-        <p class="muted small">The most-used items in each slot among the same top players.</p>
-        <div class="gear-grid">${b.gear.map(slot => `
-          <div class="gear-slot"><h3>${esc(slot.slot)}</h3>${slot.items.map((it, i) => `
-            <div class="gear-item${i ? " alt" : ""}">
-              <span class="gear-ic q-${esc(it.quality)}">${it.icon ? `<img src="${esc(it.icon)}" alt="" loading="lazy" onerror="WOW_gearIconFallback(this)">` : ""}</span>
-              <span class="gear-txt"><a class="q-${esc(it.quality)}" href="https://www.wowhead.com/item=${it.id}" target="_blank" rel="noopener">${esc(it.name)}</a>
-                <small>${it.ilvl ? `ilvl ${it.ilvl} · ` : ""}${it.pct}% use it${it.enchant ? ` · ${esc(it.enchant)}` : ""}${it.gems?.length ? ` · ${it.gems.map(esc).join(", ")}` : ""}</small></span>
-            </div>`).join("")}</div>`).join("")}</div>
+      <section class="extra-sec" aria-labelledby="gear-h">
+        <h2 id="gear-h" class="big-h">Gear top players wear</h2>
+        <div class="bis-list">${b.gear.map(slot => { const it = slot.items[0], alt = slot.items[1]; return `
+          <div class="bis-row">
+            <span class="gear-ic q-${esc(it.quality)}">${it.icon ? `<img src="${esc(it.icon)}" alt="" loading="lazy" onerror="WOW_gearIconFallback(this)">` : ""}</span>
+            <span class="bis-txt"><small>${esc(slot.slot)}${it.ilvl ? `, item level ${it.ilvl}` : ""}</small>
+              <a class="q-${esc(it.quality)}" href="https://www.wowhead.com/item=${it.id}" target="_blank" rel="noopener">${esc(it.name)}</a>
+              ${it.enchant || it.gems?.length ? `<small>${[it.enchant, ...(it.gems || [])].filter(Boolean).map(esc).join(", ")}</small>` : ""}
+              ${alt ? `<small>Or <a class="q-${esc(alt.quality)}" href="https://www.wowhead.com/item=${alt.id}" target="_blank" rel="noopener">${esc(alt.name)}</a>, ${alt.pct}%</small>` : ""}</span>
+            <span class="bis-pct"><strong>${it.pct}%</strong><small>use it</small></span>
+          </div>`; }).join("")}</div>
       </section>` : "";
-    return pvpT || stats || gear ? `<div class="split extras">${pvpT}${stats}${gear}</div>` : "";
+    const pvpT = b.pvpTalents?.length ? `
+      <section class="extra-sec" aria-labelledby="pvpt-h">
+        <h2 id="pvpt-h" class="big-h">PvP talents</h2>
+        <p class="muted">How many of the same top players run each one. You pick three in game.</p>
+        <div class="pvp-cards">${b.pvpTalents.map(x => `
+          <div class="pvp-card"><strong><span class="pvp-ic" data-spell="${x.spell || ""}"></span>${esc(x.name)}</strong>
+            <span class="tr-bar"><span style="width:${Math.min(100, x.pct)}%;background:${ac}"></span></span>
+            <small>${x.pct}% take it</small></div>`).join("")}</div>
+      </section>` : "";
+    return pvpT + stats + gear;
   }
 
   async function pageTiers(which) {
@@ -578,6 +785,7 @@
               ${c.mplus ? `<span class="tier-badge">Mythic+ <strong style="color:${esc(c.mplus.color || "inherit")}">${c.mplus.rating}</strong></span>` : ""}
               ${raid ? `<span class="tier-badge">${esc(raid.raid)} <strong>${esc(raid.text)}</strong></span>` : ""}
             </div>
+            <div class="hero-actions"><button type="button" class="btn" id="mainBtn" aria-pressed="false">Make this my main</button></div>
           </div>
         </div>
       </section>
@@ -593,6 +801,13 @@
       </div>`;
 
     document.getElementById("refreshChar").addEventListener("click", () => pageCharacter(realmSlug, who, true));
+    // Home is built around the main; any loaded character can become it.
+    const mainBtn = document.getElementById("mainBtn");
+    const isMain = () => { const m = mainChar(); return !!m && m.realmSlug === c.realmSlug && m.name.toLowerCase() === c.name.toLowerCase(); };
+    const paintMain = () => { const on = isMain(); mainBtn.textContent = on ? "Your main ✓" : "Make this my main"; mainBtn.setAttribute("aria-pressed", String(on)); };
+    const inList = (store.get("characters")?.list || []).find(x => x.realmSlug === c.realmSlug && x.name.toLowerCase() === c.name.toLowerCase());
+    if (!inList) mainBtn.hidden = true;
+    else { paintMain(); mainBtn.addEventListener("click", () => { store.set("main", mainKey(inList)); paintMain(); }); }
     const segBtns = [...main.querySelectorAll(".seg button")];
     const body = document.getElementById("cmpBody");
 

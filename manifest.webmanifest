@@ -4,8 +4,8 @@
   "description": "Tier lists, builds, talents, gear and leveling tips for World of Warcraft in one place.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#0c0e13",
-  "theme_color": "#08090d",
+  "background_color": "#14122a",
+  "theme_color": "#110f24",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10 — New look, part 1: Home and spec pages
+
+- New violet theme across the app with a Marcellus heading font, replacing the gold-and-black look
+- **Home** is built around your main: Blizzard's full character model, item level, Mythic+ rating and raid progress, the three lowest item-level slots with what top players wear there, and your secondary stats next to top players' for your spec
+- Home's **This week** shows the current raid with its art and every boss, and each Mythic+ dungeon as a picture tile
+- Home's **Top specs this week** lists the best raid specs and Mythic+ damage dealers, with your main's spec highlighted
+- Signed out, Home invites you to sign in and shows the week's top raid spec
+- **Make this my main** button on each character page picks which character Home shows (otherwise the first max-level one that loads)
+- **Spec pages** take their own colors: the class color plus a second color for the spec (Balance gets gold, Frost blue, Shadow purple, and so on), big Raid and Mythic+ tier cards, the top PvP rating, and a Mythic+ / Raid / PvP switch that stays at the top as you scroll
+- Stat priority is one bar split by share, gear lists every slot's top item with the runner-up, and PvP talents show as cards
+- Other pages pick up the new colors now and get their new layouts in part 2
+
 ## 2026-10 — Phase 7: PvP and search
 
 - New **PvP** page: tier lists for Solo Shuffle, 3v3, 2v2 and Battleground Blitz from Blizzard's US leaderboards. Shuffle and Blitz count each spec's players above a shared rating cutoff; 2v2 and 3v3 use the current specs of the top 300 players

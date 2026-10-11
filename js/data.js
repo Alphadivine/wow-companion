@@ -77,5 +77,22 @@ window.WOW_DATA = (() => {
     facts: ["Level cap 60", "1,000+ new quests", "9 new dungeons, including Hall of Thanes (Ironforge, levels 13–18)", "2 new raids for 10 and 20 players", "Included with a WoW subscription"]
   };
 
-  return { CLASS_COLORS, ROLES, VERSIONS, SECTIONS, ROADMAP, FOREVER };
+  // Each spec page's second color, picked from the spec's magic or theme (the class color is the first).
+  const SPEC_ACCENT = {
+    250: "#ff5a6e", 251: "#7fd4ff", 252: "#8fe36b",            // Death Knight
+    577: "#7be33d", 581: "#b65cff", 1480: "#9b6bff",           // Demon Hunter
+    102: "#f2c14e", 103: "#ffb347", 104: "#c08a5b", 105: "#6fd38f", // Druid
+    1467: "#ff6a3d", 1468: "#4fd1c5", 1473: "#e8c35a",         // Evoker
+    253: "#d9a066", 254: "#a8c66c", 255: "#c9a15a",            // Hunter
+    62: "#c77dff", 63: "#ff7a3d", 64: "#7fd4ff",               // Mage
+    268: "#e8b04b", 270: "#6fe3c5", 269: "#8fd3ff",            // Monk
+    65: "#f2c14e", 66: "#e8d27a", 70: "#ffb347",               // Paladin
+    256: "#f2e39b", 257: "#f2c14e", 258: "#a77bff",            // Priest
+    259: "#8fe36b", 260: "#e8b04b", 261: "#a77bff",            // Rogue
+    262: "#8fb3ff", 263: "#7fd4ff", 264: "#6fd3c5",            // Shaman
+    265: "#8fe36b", 266: "#b65cff", 267: "#ff7a3d",            // Warlock
+    71: "#d9a066", 72: "#ff6a3d", 73: "#a8b8d0"                // Warrior
+  };
+
+  return { SPEC_ACCENT, CLASS_COLORS, ROLES, VERSIONS, SECTIONS, ROADMAP, FOREVER };
 })();
