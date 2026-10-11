@@ -2,7 +2,8 @@
 window.WOW_API = (() => {
   const base = String((window.WOW_CONFIG || {}).apiBase || "").replace(/\/+$/, "");
   const LOCAL_HOURS = 6;
-  const PREFIX = "wowc:v2:";
+  const VERSION = "2"; // bump with the Worker's CACHE_VERSION so browsers drop old answers
+  const PREFIX = `wowc:v${VERSION}:`;
 
   function readLocal(key) {
     try {
@@ -26,7 +27,7 @@ window.WOW_API = (() => {
     if (hit) return hit;
     let res;
     try {
-      res = await fetch(base + path, { headers: { Accept: "application/json" } });
+      res = await fetch(`${base}${path}?v=${VERSION}`, { headers: { Accept: "application/json" } });
     } catch {
       throw new Error("Couldn't reach the WoW Companion server. Check your connection, or that the Worker is deployed.");
     }

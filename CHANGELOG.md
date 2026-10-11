@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10 — Updates show up right away
+
+- Browsers now keep Worker answers for 5 minutes instead of an hour, and the site asks for a versioned address, so fixes appear right after a deploy instead of up to an hour later (redeploy the Worker to get this)
+
 ## 2026-10 — Talent trees match live Blizzard data
 
 - Spec pages now show only the two hero trees each spec can use (Blizzard sends every hero tree for the class)
