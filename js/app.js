@@ -1006,7 +1006,7 @@
   const slugOf = s => String(s || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const normOf = s => String(s || "").toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]/g, "");
   // Blizzard writes ability names in [brackets]; show them in bold instead.
-  const rich = t => esc(t).replace(/\[([^\]]{1,60})\]/g, '<strong class="sp">$1</strong>');
+  const rich = t => esc(String(t || "").replace(/\[\]/g, " ")).replace(/\[([^\]]{1,60})\]/g, '<strong class="sp">$1</strong>');
   const bullets = list => (list || []).length ? `<ul class="notes">${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
   const sourceList = (urls, checked) => (urls || []).length ? `<details class="sources"><summary>Sources${checked ? ` · checked ${esc(new Date(checked + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }))}` : ""}</summary><ul>${urls.map(u => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""))}</a></li>`).join("")}</ul></details>` : "";
   const copyButtons = root => root.querySelectorAll("[data-copy]").forEach(btn => btn.addEventListener("click", async () => {

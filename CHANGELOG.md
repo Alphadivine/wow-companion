@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10 — Fix: stray brackets in boss abilities
+
+- Removed the empty "[]" Blizzard leaves in some ability descriptions (for example The Hoardmonger's Resourceful Measures)
+
 ## 2026-10 — New look, part 2: every other page
 
 - Page headers across the app use the new large titles, with switches (Mythic+ / Raid / PvP, brackets, Classic versions) beside the title
