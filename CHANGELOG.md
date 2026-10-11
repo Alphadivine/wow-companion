@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10 — Phase 3: My Characters
+
+- **Battle.net sign-in** on My Characters: sign in once, and your character list is saved on this device. Update list picks up new characters; Forget list removes it
+- Max-level characters show as cards with portrait, spec, item level, Mythic+ score and current raid progress; alts still leveling are behind a "Show all" toggle
+- **Character page** compares a character with the top Mythic+ or Raid build (same switch as the spec pages): an upgrade checklist, talent changes listed and marked on the tree (add, remove, switch, more ranks), gear next to the top players' pick for each slot with missing enchants and empty sockets flagged, and secondary stats side by side
+- Worker: new sign-in routes and a character route (gear with item icons, talents, stats, Mythic+ score, raid progress, portrait), cached 10 minutes
+- The site quietly retries once when Blizzard fails a request, instead of showing "Couldn't reach Blizzard's API"
+- Fixed talent nodes not in a build sitting above the phone's talent details sheet, and letter placeholders on spec cards sitting in the corner when an icon is missing
+
 ## 2026-10 — Phase 2 fixes after the first real data run
 
 - Stat priority read 100% Versatility for every spec: Blizzard now sends crit, haste and mastery as `rating_normalized`, which the data job now reads

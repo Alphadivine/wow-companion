@@ -36,7 +36,7 @@ window.WOW_DATA = (() => {
       blurb: "Tank, healer and DPS rankings for Mythic+ and raid, built from Warcraft Logs and Raider.IO, with the sample size shown.",
       bullets: ["S, A and B tiers for each role", "Switch between Mythic+ and Raid", "See which specs moved since the last patch"] },
     { id: "specs", label: "Specs", href: "#/specs", ready: true },
-    { id: "characters", label: "My Characters", href: "#/characters", phase: 3,
+    { id: "characters", label: "My Characters", href: "#/characters", ready: true, phase: 3,
       blurb: "Log in with Battle.net once and every US character loads, compared against the top build.",
       bullets: ["Gear vs best in slot, with missing enchants and gems", "Talents that differ from the top build", "An upgrade checklist, M+ score and raid progress"] },
     { id: "leveling", label: "Leveling", href: "#/leveling", phase: 4,
@@ -53,7 +53,7 @@ window.WOW_DATA = (() => {
   const ROADMAP = [
     { phase: 1, title: "Foundation", text: "Class and spec pages with live talent trees", done: true },
     { phase: 2, title: "Builds & tier lists", text: "Top builds, stats and best in slot from logs", done: true },
-    { phase: 3, title: "My Characters", text: "Battle.net login and character compare" },
+    { phase: 3, title: "My Characters", text: "Battle.net login and character compare", done: true },
     { phase: 4, title: "Leveling & dungeons", text: "Leveling tips and boss quick notes" },
     { phase: 5, title: "WoW Forever", text: "Zones, dungeons and leveling after launch" },
     { phase: 6, title: "Classic Era", text: "Talents, pre-raid gear, Hardcore tips" },

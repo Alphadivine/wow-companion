@@ -5,37 +5,49 @@ window.WOW_API = (() => {
   const VERSION = "6"; // bump with the Worker's CACHE_VERSION so browsers drop old answers
   const PREFIX = `wowc:v${VERSION}:`;
 
-  function readLocal(key) {
+  function readLocal(key, maxMs = LOCAL_HOURS * 3600000) {
     try {
       const raw = localStorage.getItem(PREFIX + key);
       if (!raw) return null;
       const v = JSON.parse(raw);
-      return v && v.t && Date.now() - v.t < LOCAL_HOURS * 3600000 ? v.d : null;
+      return v && v.t && Date.now() - v.t < maxMs ? v.d : null;
     } catch { return null; }
   }
   function writeLocal(key, data) {
     try { localStorage.setItem(PREFIX + key, JSON.stringify({ t: Date.now(), d: data })); } catch { /* storage full or blocked */ }
   }
 
-  async function get(path) {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // opts.maxMs: how long the browser's own copy stays fresh; opts.noStore: never save it.
+  async function get(path, opts = {}) {
     if (!base) {
       const e = new Error("not-configured");
       e.setup = true;
       throw e;
     }
-    const hit = readLocal(path);
+    const hit = opts.noStore ? null : readLocal(path, opts.maxMs);
     if (hit) return hit;
-    let res;
-    try {
-      res = await fetch(`${base}${path}?v=${VERSION}`, { headers: { Accept: "application/json" } });
-    } catch {
-      throw new Error("Couldn't reach the WoW Companion server. Check your connection, or that the Worker is deployed.");
+    // Blizzard occasionally fails a request even after the Worker's retries, so try once more quietly.
+    for (let attempt = 0; ; attempt++) {
+      let res;
+      try {
+        res = await fetch(`${base}${path}?v=${VERSION}`, { headers: { Accept: "application/json" } });
+      } catch {
+        if (attempt < 1) { await sleep(900); continue; }
+        throw new Error("Couldn't reach the WoW Companion server. Check your connection, or that the Worker is deployed.");
+      }
+      let body = null;
+      try { body = await res.json(); } catch { /* not JSON */ }
+      if (!res.ok) {
+        if ((res.status >= 500 || res.status === 429) && attempt < 1 && !opts.noStore) { await sleep(900); continue; }
+        const e = new Error((body && body.error) || `The server answered with an error (${res.status}).`);
+        e.status = res.status;
+        throw e;
+      }
+      if (!opts.noStore) writeLocal(path, body);
+      return body;
     }
-    let body = null;
-    try { body = await res.json(); } catch { /* not JSON */ }
-    if (!res.ok) throw new Error((body && body.error) || `The server answered with an error (${res.status}).`);
-    writeLocal(path, body);
-    return body;
   }
 
   // Spell icons are kept in the browser for 30 days and fetched 30 at a time.
@@ -82,6 +94,10 @@ window.WOW_API = (() => {
     meta: () => siteData("meta.json"),
     classes: () => get("/api/classes"),
     cls: id => get(`/api/class/${id}`),
-    spec: id => get(`/api/spec/${id}`)
+    spec: id => get(`/api/spec/${id}`),
+    // A character's gear and talents change often, so the browser keeps them for 10 minutes.
+    character: (realmSlug, name, fresh) => get(`/api/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(String(name).toLowerCase())}`, { maxMs: fresh ? 0 : 10 * 60000 }),
+    pickUpLogin: id => get(`/api/login/${id}`, { noStore: true }),
+    signInUrl: () => `${base}/auth/login?return=${encodeURIComponent(location.origin + location.pathname)}`
   };
 })();
