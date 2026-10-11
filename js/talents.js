@@ -178,8 +178,12 @@ window.WOW_TALENTS = (() => {
     const map = new Map();
     let unmatched = 0;
     for (const t of list || []) {
+      if (!t.name && !t.spell) continue; // Blizzard sometimes sends an empty placeholder entry
       const n = byId.get(t.node) || bySpell.get(t.spell) || byName.get(t.name);
       if (!n) { unmatched++; continue; }
+      // Some nodes split their points across several entries (Ascendant Eclipses: 1 + 2 + 1); add them up.
+      const had = map.get(n.id);
+      if (had && had.name === t.name && (n.choices.length < 2 || had.spell !== t.spell)) { had.rank += t.rank || 1; continue; }
       map.set(n.id, { node: n.id, spell: t.spell, name: t.name, rank: t.rank || 1 });
     }
     return { map, unmatched };

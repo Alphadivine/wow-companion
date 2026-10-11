@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10 — Phase 3 fixes from the first real sign-in
+
+- Talents that split their points across several entries (Balance's Ascendant Eclipses) now add up, instead of showing "1 → 4"
+- Blizzard's empty placeholder talent no longer counts as "couldn't be placed on the tree"
+- Raid progress shows "Not started" for the current raid instead of an older raid's progress
+- The enchant checklist line lists slots only; each slot's usual enchant now shows on its Gear row
+
 ## 2026-10 — Phase 3: My Characters
 
 - **Battle.net sign-in** on My Characters: sign in once, and your character list is saved on this device. Update list picks up new characters; Forget list removes it

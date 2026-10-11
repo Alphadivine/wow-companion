@@ -414,8 +414,9 @@
     network: "The Worker couldn't reach Battle.net. Try again in a minute."
   };
   const raidSummary = (c, zoneName) => {
-    const inst = c.raids?.find(r => zoneName && r.name === zoneName) || c.raids?.[c.raids.length - 1];
-    if (!inst) return null;
+    const inst = c.raids?.find(r => zoneName && r.name === zoneName);
+    // No kills in the current raid yet: say so rather than showing an older raid.
+    if (!inst) return zoneName ? { raid: zoneName, text: "Not started" } : null;
     const order = ["MYTHIC", "HEROIC", "NORMAL", "LFR"];
     const best = order.map(t => inst.modes.find(m => m.type === t)).find(m => m && m.done > 0);
     return best ? { raid: inst.name, text: `${best.difficulty} ${best.done}/${best.total}` } : { raid: inst.name, text: "Not started" };
@@ -597,7 +598,7 @@
       const statGap = (b.stats || []).map(t => ({ stat: t.stat, top: t.pct, mine: c.stats?.find(s => s.stat === t.stat)?.pct ?? 0 })).map(x => ({ ...x, gap: x.top - x.mine })).sort((a, z) => z.gap - a.gap)[0];
 
       const checks = [];
-      if (noEnchant.length) checks.push({ icon: warnIcon, text: `<strong>Enchant ${noEnchant.length} slot${noEnchant.length === 1 ? "" : "s"}:</strong> ${noEnchant.map(r => `${esc(r.it.slot)} (top players use ${esc(r.slot.items[0].enchant)})`).join("; ")}` });
+      if (noEnchant.length) checks.push({ icon: warnIcon, text: `<strong>Enchant ${noEnchant.length} slot${noEnchant.length === 1 ? "" : "s"}:</strong> ${noEnchant.map(r => esc(r.it.slot)).join(", ")}. Each slot's usual enchant is listed under Gear.` });
       if (sockets.length) checks.push({ icon: warnIcon, text: `<strong>Fill ${sockets.reduce((a, r) => a + r.emptySockets, 0)} empty gem socket${sockets.reduce((a, r) => a + r.emptySockets, 0) === 1 ? "" : "s"}:</strong> ${sockets.map(r => esc(r.it.slot)).join(", ")}` });
       if (heroDiffers) checks.push({ icon: warnIcon, text: `<strong>Hero talents:</strong> top players use ${esc(topHero.name)}; you use ${esc(myHero.name)}.` });
       if (diffs.length) checks.push({ icon: warnIcon, text: `<strong>Change ${diffs.length} talent${diffs.length === 1 ? "" : "s"}</strong> to match the top build${b.importString ? " (or copy its import string below)" : ""}.` });
@@ -643,7 +644,7 @@
                   <span class="gear-ic q-${esc(r.it.quality)}">${r.it.icon ? `<img src="${esc(r.it.icon)}" alt="" loading="lazy" onerror="WOW_gearIconFallback(this)">` : ""}</span>
                   <span class="gear-txt"><a class="q-${esc(r.it.quality)}" href="https://www.wowhead.com/item=${r.it.id}" target="_blank" rel="noopener">${esc(r.it.name)}</a>
                     <small>ilvl ${r.it.ilvl}${r.it.enchant ? ` · ${esc(r.it.enchant)}` : ""}${(r.it.sockets || []).filter(Boolean).length ? ` · ${r.it.sockets.filter(Boolean).map(esc).join(", ")}` : ""}</small>
-                    ${r.noEnchant ? `<small class="warn-t">No enchant</small>` : ""}${r.emptySockets ? `<small class="warn-t">${r.emptySockets} empty socket${r.emptySockets === 1 ? "" : "s"}</small>` : ""}
+                    ${r.noEnchant ? `<small class="warn-t">No enchant · top players use ${esc(r.slot.items[0].enchant)}</small>` : ""}${r.emptySockets ? `<small class="warn-t">${r.emptySockets} empty socket${r.emptySockets === 1 ? "" : "s"}</small>` : ""}
                   </span>
                 </span>
                 <span class="cg-top">${!r.slot ? `<span class="muted small">No top-player data</span>` : r.isTop ? `<span class="ok-t">${okIcon} Top pick</span>` : `<small class="muted">Top players use</small><a class="q-${esc(r.slot.items[0].quality)}" href="https://www.wowhead.com/item=${r.slot.items[0].id}" target="_blank" rel="noopener">${esc(r.slot.items[0].name)}</a><small class="muted">${r.slot.items[0].pct}% of them</small>`}</span>
