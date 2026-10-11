@@ -8,6 +8,7 @@
 - Sign-in doesn't use KV storage (the free plan allows 1,000 writes a day, and the talent icon cache can use them up, which made sign-in fail with Cloudflare error 1101). The sign-in is protected with a signed state and a short-lived cookie instead
 - Saving the Worker's Blizzard access key no longer fails requests when KV's daily writes are used up (the cause of the occasional "Couldn't reach Blizzard's API")
 - Worker: new sign-in routes and a character route (gear with item icons, talents, stats, Mythic+ score, raid progress, portrait), cached 10 minutes
+- The app always checks for updated files, so a new upload takes effect on the next page load instead of up to 10 minutes later (an old cached copy of the page made the first sign-in say "Sign-in didn't finish")
 - The site quietly retries once when Blizzard fails a request, instead of showing "Couldn't reach Blizzard's API"
 - Fixed talent nodes not in a build sitting above the phone's talent details sheet, and letter placeholders on spec cards sitting in the corner when an icon is missing
 
